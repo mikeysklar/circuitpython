@@ -199,7 +199,7 @@ static display_type_t detect_display_type(void) {
     // With SSD1680, we have seen two types:
     // 1. The first batch of displays, labeled "FPC-A005 20.06.15 TRX", which needs colstart=0.
     //    These have 10 bytes of zeros in the User ID.
-    // 2. Later panels, labeled "FPC-7519rev.b", which need colstart=8 and lower VCOM.
+    // 2. Later panels, labeled "FPC-7519rev.b", which need colstart=8 and a tuned LUT/VCOM.
     //    Two controller variants exist within this panel generation:
     //      User ID [0x44, 0x0, 0x4, 0x0, 0x25, 0x0, 0x1, 0x78, 0x2b, 0xe]
     //      User ID [0xca, 0xfe, 0x0, 0x16, 0x80, 0x0, 0x75, 0x1, 0x0, 0x98]
