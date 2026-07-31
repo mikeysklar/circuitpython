@@ -11,6 +11,7 @@
 #include "shared-bindings/wifi/ScannedNetworks.h"
 #include "shared-bindings/wifi/Network.h"
 
+#include <zephyr/kernel.h>
 #include <zephyr/net/net_if.h>
 
 // Event bits for the Radio event group.
@@ -38,6 +39,12 @@ typedef struct {
     uint8_t retries_left;
     uint8_t starting_retries;
     uint8_t last_disconnect_reason;
+    // Signalled from the net_mgmt event handler when a connect attempt
+    // finishes, so common_hal_wifi_radio_connect() can wait on the result.
+    struct k_sem connect_sem;
+    // Latest wifi_conn_status from NET_EVENT_WIFI_CONNECT_RESULT.
+    int last_connect_status;
+    bool connected;
 } wifi_radio_obj_t;
 
 extern void common_hal_wifi_radio_gc_collect(wifi_radio_obj_t *self);
