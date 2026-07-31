@@ -677,7 +677,10 @@ def zephyr_dts_to_cp_board(board_id, portdir, builddir, zephyrbuilddir, mpconfig
 
                 if (ioport, num) not in board_names:
                     board_names[(ioport, num)] = []
-                board_names[(ioport, num)].append(props["label"].to_string())
+                # `label` is optional and deprecated on gpio-keys; modern boards
+                # identify keys with `zephyr,code` instead.
+                if "label" in props:
+                    board_names[(ioport, num)].append(props["label"].to_string())
                 if key in node2alias:
                     if "sw0" in node2alias[key]:
                         board_names[(ioport, num)].append("BUTTON")
