@@ -278,6 +278,13 @@ void common_hal_wifi_init(bool user_initiated) {
     // self->ap_mode = 0;
 
     net_mgmt_init_event_callback(&wifi_cb, _event_handler,
+        // SCAN_RESULT delivers the parsed per-AP entries. Without it the
+        // handler's NET_EVENT_WIFI_SCAN_RESULT case never runs and scans
+        // always return zero networks. RAW_SCAN_RESULT is not a substitute:
+        // it carries raw beacon frames and only fires when
+        // CONFIG_WIFI_MGMT_RAW_SCAN_RESULTS is enabled, which it is not by
+        // default.
+        NET_EVENT_WIFI_SCAN_RESULT |
         NET_EVENT_WIFI_SCAN_DONE |
         NET_EVENT_WIFI_CONNECT_RESULT |
         NET_EVENT_WIFI_DISCONNECT_RESULT |
