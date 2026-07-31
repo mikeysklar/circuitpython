@@ -266,7 +266,29 @@ void port_heap_init(void) {
     zephyr_malloc_active = test_malloc != NULL;
     #endif
 
+    // TLSF's control structure lives in the first pool, so that pool must be
+    // large enough to hold it. Pick the largest region for it rather than
+    // whichever happens to come first: a board whose first region is tiny (the
+    // SiWx917 has two 1 KB regions ahead of 8 MB of PSRAM) otherwise builds its
+    // heap in a space too small to use, and the first real allocation aborts.
+    size_t largest_index = 0;
+    size_t largest_size = 0;
     for (size_t i = 0; i < CIRCUITPY_RAM_DEVICE_COUNT; i++) {
+        size_t size = (ram_bounds[2 * i + 1] - ram_bounds[2 * i]) * sizeof(uint32_t);
+        if (size > largest_size) {
+            largest_size = size;
+            largest_index = i;
+        }
+    }
+
+    for (size_t n = 0; n < CIRCUITPY_RAM_DEVICE_COUNT; n++) {
+        // Visit the largest region first, then the rest in their original order.
+        size_t i;
+        if (n == 0) {
+            i = largest_index;
+        } else {
+            i = (n - 1 < largest_index) ? n - 1 : n;
+        }
         uint32_t *heap_bottom = ram_bounds[2 * i];
         uint32_t *heap_top = ram_bounds[2 * i + 1];
         size_t size = (heap_top - heap_bottom) * sizeof(uint32_t);
@@ -294,6 +316,15 @@ void port_heap_init(void) {
         // If this crashes, then make sure you've enabled all of the Kconfig needed for the drivers.
         if (valid_pool_count == 0) {
             heap = tlsf_create_with_pool(heap_bottom, size, circuitpy_max_ram_size);
+            if (heap == NULL) {
+                // The region passed the size check above but is still too small
+                // to hold TLSF's control structure, so it cannot be the first
+                // pool. Skip it and try the next region instead of leaving
+                // `heap` NULL, which aborts on the first allocation.
+                printk("Region too small to host the heap control structure; skipping\n");
+                pools[i] = NULL;
+                continue;
+            }
             pools[i] = tlsf_get_pool(heap);
         } else {
             pools[i] = tlsf_add_pool(heap, heap_bottom + 1, size - sizeof(uint32_t));
