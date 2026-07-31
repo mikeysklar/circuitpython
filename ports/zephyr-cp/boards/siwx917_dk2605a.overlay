@@ -1,0 +1,57 @@
+// Replaces the port's app.overlay, which cannot be used here: it does
+// `&zephyr_udc0 { ... }` to add the CDC-ACM console, and the SiWG917 has no USB
+// device controller. The CircuitPython console falls back to the Zephyr console
+// on &ulpuart, reaching the host over the on-board J-Link VCOM.
+
+// CIRCUITPY filesystem.
+//
+// supervisor/flash.c looks for a partition node labeled `circuitpy_partition`
+// (#define CIRCUITPY_PARTITION circuitpy_partition). Without it the port falls
+// back to scanning for a flash device not covered by any partition, finds none
+// on this board, prints "no flash found for filesystem" and boots into safe
+// mode with "CIRCUITPY drive could not be found or created".
+//
+// The whole 8 MB is already partitioned by siwg917m111mgtba.dtsi, so there is
+// no unallocated space to claim:
+//   0x000000..0x011000  mbr_nwp                        (do not touch)
+//   0x011000..0x1f0000  code_nwp  - NWP firmware       (do not touch)
+//   0x1f0000..0x202000  mbr + hdr                      (do not touch)
+//   0x202000..0x3f8000  code_partition - our M4 app
+//   0x3f8000..0x400000  storage   - only 32 KB, unusable as CIRCUITPY
+//   0x400000..0x800000  ota_swap_partition
+//   0x7cf000..0x800000  storage_nwp, storage_shared, backup_bootloader
+//
+// Placing CIRCUITPY in the upper region (0x400000..0x7cf000, inside ota_swap)
+// opens and reads fine but every write fails:
+//
+//   flash write failed: -5      (-EIO)
+//     address 0 length 512
+//
+// In common-flash mode the M4 cannot write flash itself; the driver calls
+// sl_si91x_command_to_write_common_flash() to have the NWP do it, and the NWP
+// refuses writes in the OTA-swap/NWP-owned upper area.
+//
+// So carve CIRCUITPY out of the M4's own code_partition instead, which is
+// definitely writable - it is where our firmware is flashed. code_partition is
+// shrunk from 2008K to 1M (the image currently uses ~703K, so there is room;
+// if it ever overflows the build fails loudly at link time rather than
+// silently corrupting the filesystem).
+//
+//   0x202000 + 1M      code_partition   -> ends 0x302000
+//   0x302000 + 984K    circuitpy        -> ends 0x3f8000
+//   0x3f8000 + 32K     storage (unchanged)
+&flash0 {
+	partitions {
+		code_partition: partition@202000 {
+			compatible = "zephyr,mapped-partition";
+			reg = <0x00202000 0x00100000>;
+			label = "code_partition";
+		};
+
+		circuitpy_partition: partition@302000 {
+			compatible = "zephyr,mapped-partition";
+			reg = <0x00302000 0x000f6000>;
+			label = "circuitpy";
+		};
+	};
+};
