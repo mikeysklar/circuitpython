@@ -11,6 +11,10 @@
 
 #include <zephyr/kernel.h>
 
+#if CIRCUITPY_BLEIO
+#include "common-hal/_bleio/Adapter.h"
+#endif
+
 void port_start_background_tick(void) {
 }
 
@@ -22,6 +26,13 @@ void port_background_tick(void) {
 }
 
 void port_background_task(void) {
+    #if CIRCUITPY_BLEIO
+    // Resume advertising after a disconnect.  Deferred to here because the
+    // Zephyr disconnect callback runs in the BT thread, where bt_le_adv_start()
+    // must not be called.
+    bleio_background();
+    #endif
+
     // Make sure time advances in the simulator.
     #if defined(CONFIG_ARCH_POSIX)
     k_busy_wait(100);
