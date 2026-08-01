@@ -58,11 +58,21 @@
 // NWP-reserved/DMA pools either; excluding those (supervisor/port.c minimum
 // region size) did not help.
 //
-// Disabling the node keeps it out of the generated ram_bounds[], so the heap
-// falls back to the 319 KB internal sram0, which is ample for CircuitPython.
-// Re-enable once the root cause is found - the 8 MB is worth having.
+// ROOT CAUSE FOUND 2026-08-01, and the node is enabled again.
+//
+// The SoC has a 16 KB data cache dedicated to PSRAM (family RM rev 1.2 section
+// 5.4.5) at 0x44040000, on the QSPI2 path. The bootloader leaves it enabled and
+// half-configured, and nothing in this build maintains it - see the long
+// comment in supervisor/port.c, which disables it in port_heap_init() before
+// any TLSF pool exists.
+//
+// Note what did NOT work, so it is not retried: setting ATTR_MPU_RAM_NOCACHE on
+// this node changes nothing. That is an MPU attribute governing the Cortex-M
+// architectural cache, and CPU_HAS_DCACHE is never selected, so there is
+// nothing there for it to govern. The cache that matters is a separate
+// peripheral and an MPU attribute does not reach it.
 &psram {
-	status = "disabled";
+	status = "okay";
 };
 
 &flash0 {
