@@ -487,12 +487,35 @@ wifi_radio_error_t common_hal_wifi_radio_connect(wifi_radio_obj_t *self, uint8_t
         memcpy(params.bssid, bssid, WIFI_MAC_ADDR_LEN);
     }
 
+    // Connecting while already associated is rejected by the driver with
+    // -EALREADY ("Device already in active state"), and the resulting failure
+    // path takes the interface back down, so a reconnect attempt would drop a
+    // working link. Drop the existing association first and let the normal
+    // connect path run.
+    if (self->connected) {
+        int disc = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, self->sta_netif, NULL, 0);
+        if (disc < 0 && disc != -EALREADY) {
+            printk("NET_REQUEST_WIFI_DISCONNECT failed: %d\n", disc);
+        }
+        // Give the controller a moment to tear the association down.
+        for (int i = 0; i < 40 && self->connected; i++) {
+            k_msleep(50);
+        }
+        self->connected = false;
+    }
+
     self->connected = false;
     self->last_connect_status = -1;
     self->last_disconnect_reason = 0;
     k_sem_reset(&self->connect_sem);
 
     int res = net_mgmt(NET_REQUEST_WIFI_CONNECT, self->sta_netif, &params, sizeof(params));
+    if (res == -EALREADY) {
+        // Already associated to this network. Nothing to do.
+        printk("wifi already connected\n");
+        self->connected = true;
+        return WIFI_RADIO_ERROR_NONE;
+    }
     if (res < 0) {
         printk("NET_REQUEST_WIFI_CONNECT failed: %d\n", res);
         return WIFI_RADIO_ERROR_UNSPECIFIED;
