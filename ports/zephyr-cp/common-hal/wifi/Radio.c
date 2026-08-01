@@ -28,6 +28,7 @@
 #include <zephyr/net/hostname.h>
 #include <zephyr/net/wifi.h>
 #include <zephyr/net/wifi_mgmt.h>
+#include <zephyr/net/dhcpv4.h>
 
 #if CIRCUITPY_MDNS
 #include "common-hal/mdns/Server.h"
@@ -118,8 +119,13 @@ void common_hal_wifi_radio_set_hostname(wifi_radio_obj_t *self, const char *host
 }
 
 mp_obj_t common_hal_wifi_radio_get_mac_address(wifi_radio_obj_t *self) {
-    uint8_t mac[MAC_ADDRESS_LENGTH];
-    // esp_wifi_get_mac(ESP_IF_WIFI_STA, mac);
+    uint8_t mac[MAC_ADDRESS_LENGTH] = { 0 };
+    if (self->sta_netif != NULL) {
+        struct net_linkaddr *addr = net_if_get_link_addr(self->sta_netif);
+        if (addr != NULL && addr->len >= MAC_ADDRESS_LENGTH) {
+            memcpy(mac, addr->addr, MAC_ADDRESS_LENGTH);
+        }
+    }
     return mp_obj_new_bytes(mac, MAC_ADDRESS_LENGTH);
 }
 
@@ -456,12 +462,95 @@ wifi_radio_error_t common_hal_wifi_radio_connect(wifi_radio_obj_t *self, uint8_t
     //     // We're connected, allow us to retry if we get disconnected.
     //     self->retries_left = self->starting_retries;
     // }
+
+    struct wifi_connect_req_params params = { 0 };
+
+    params.ssid = ssid;
+    params.ssid_length = ssid_len;
+    params.band = WIFI_FREQ_BAND_2_4_GHZ;
+    params.channel = channel == 0 ? WIFI_CHANNEL_ANY : channel;
+    params.mfp = WIFI_MFP_OPTIONAL;
+    params.timeout = SYS_FOREVER_MS;
+
+    if (password_len > 0) {
+        params.psk = password;
+        params.psk_length = password_len;
+        // WPA2-PSK. Drivers that support a WPA2/WPA3 transition AP will
+        // negotiate up from here; a WPA3-only network needs
+        // WIFI_SECURITY_TYPE_SAE, which we cannot infer without a prior scan.
+        params.security = WIFI_SECURITY_TYPE_PSK;
+    } else {
+        params.security = WIFI_SECURITY_TYPE_NONE;
+    }
+
+    if (bssid_len == WIFI_MAC_ADDR_LEN) {
+        memcpy(params.bssid, bssid, WIFI_MAC_ADDR_LEN);
+    }
+
+    self->connected = false;
+    self->last_connect_status = -1;
+    self->last_disconnect_reason = 0;
+    k_sem_reset(&self->connect_sem);
+
+    int res = net_mgmt(NET_REQUEST_WIFI_CONNECT, self->sta_netif, &params, sizeof(params));
+    if (res < 0) {
+        printk("NET_REQUEST_WIFI_CONNECT failed: %d\n", res);
+        return WIFI_RADIO_ERROR_UNSPECIFIED;
+    }
+
+    // Wait for NET_EVENT_WIFI_CONNECT_RESULT (or a DISCONNECT_RESULT standing
+    // in for a failed attempt), staying responsive to ctrl-C.
+    mp_float_t timeout_s = timeout <= 0 ? (mp_float_t)10 : timeout;
+    int64_t deadline = k_uptime_get() + (int64_t)(timeout_s * 1000);
+    bool signalled = false;
+    while (k_uptime_get() < deadline) {
+        if (k_sem_take(&self->connect_sem, K_MSEC(50)) == 0) {
+            signalled = true;
+            break;
+        }
+        if (mp_hal_is_interrupted()) {
+            return WIFI_RADIO_ERROR_UNSPECIFIED;
+        }
+    }
+
+    if (!signalled) {
+        printk("connect timed out\n");
+        return WIFI_RADIO_ERROR_HANDSHAKE_TIMEOUT;
+    }
+    if (!self->connected) {
+        switch (self->last_connect_status) {
+            case WIFI_STATUS_CONN_WRONG_PASSWORD:
+                return WIFI_RADIO_ERROR_AUTH_FAIL;
+            case WIFI_STATUS_CONN_AP_NOT_FOUND:
+                return WIFI_RADIO_ERROR_NO_AP_FOUND;
+            case WIFI_STATUS_CONN_TIMEOUT:
+                return WIFI_RADIO_ERROR_HANDSHAKE_TIMEOUT;
+            default:
+                return WIFI_RADIO_ERROR_CONNECTION_FAIL;
+        }
+    }
+
+    // Associated. Ask for an address; the AP side of DHCP can take a moment.
+    #if defined(CONFIG_NET_DHCPV4)
+    net_dhcpv4_start(self->sta_netif);
+    int64_t ip_deadline = k_uptime_get() + 15000;
+    while (k_uptime_get() < ip_deadline) {
+        if (net_if_ipv4_get_global_addr(self->sta_netif, NET_ADDR_PREFERRED) != NULL) {
+            break;
+        }
+        if (mp_hal_is_interrupted()) {
+            break;
+        }
+        k_msleep(50);
+    }
+    #endif
+
     return WIFI_RADIO_ERROR_NONE;
 }
 
 bool common_hal_wifi_radio_get_connected(wifi_radio_obj_t *self) {
-    // return self->sta_mode && esp_netif_is_netif_up(self->netif);
-    return false;
+    return self->connected && self->sta_netif != NULL &&
+           net_if_is_up(self->sta_netif);
 }
 
 mp_obj_t common_hal_wifi_radio_get_ap_info(wifi_radio_obj_t *self) {
@@ -499,11 +588,17 @@ mp_obj_t common_hal_wifi_radio_get_ap_info(wifi_radio_obj_t *self) {
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_gateway(wifi_radio_obj_t *self) {
-    // if (!esp_netif_is_netif_up(self->netif)) {
-    return mp_const_none;
-    // }
-    // esp_netif_get_ip_info(self->netif, &self->ip_info);
-    // return common_hal_ipaddress_new_ipv4address(self->ip_info.gw.addr);
+    if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
+        return mp_const_none;
+    }
+    const struct net_if_config *cfg = net_if_get_config(self->sta_netif);
+    if (cfg == NULL || cfg->ip.ipv4 == NULL) {
+        return mp_const_none;
+    }
+    if (cfg->ip.ipv4->gw.s_addr == 0) {
+        return mp_const_none;
+    }
+    return common_hal_ipaddress_new_ipv4address(cfg->ip.ipv4->gw.s_addr);
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_gateway_ap(wifi_radio_obj_t *self) {
@@ -581,12 +676,14 @@ uint32_t wifi_radio_get_ipv4_address(wifi_radio_obj_t *self) {
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_address(wifi_radio_obj_t *self) {
-    // if (!esp_netif_is_netif_up(self->netif)) {
-    //     return mp_const_none;
-    // }
-    // esp_netif_get_ip_info(self->netif, &self->ip_info);
-    // return common_hal_ipaddress_new_ipv4address(self->ip_info.ip.addr);
-    return mp_const_none;
+    if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
+        return mp_const_none;
+    }
+    struct in_addr *addr = net_if_ipv4_get_global_addr(self->sta_netif, NET_ADDR_PREFERRED);
+    if (addr == NULL) {
+        return mp_const_none;
+    }
+    return common_hal_ipaddress_new_ipv4address(addr->s_addr);
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_address_ap(wifi_radio_obj_t *self) {
