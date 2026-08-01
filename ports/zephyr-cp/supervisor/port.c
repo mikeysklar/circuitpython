@@ -17,6 +17,7 @@
 
 #include <zephyr/autoconf.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/barrier.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
 
@@ -257,6 +258,44 @@ void port_idle_until_interrupt(void) {
 
 // Zephyr doesn't maintain one multi-heap. So, make our own using TLSF.
 void port_heap_init(void) {
+    #if defined(CONFIG_SOC_FAMILY_SILABS_SIWX91X)
+    // The SiWx917 has a 16 KB data cache dedicated to PSRAM (family RM rev 1.2
+    // section 5.4.5) sitting on the QSPI2 path, at 0x44040000. The bootloader
+    // leaves it enabled and half-configured, and nothing in this build can
+    // maintain it:
+    //
+    //   - WiseConnect's own PSRAM init clears the HPROT allocate signal right
+    //     after enabling the cache. That step never runs here, because
+    //     SL_SI91X_D_CACHE_ENABLE is never defined and the macros it needs
+    //     (DCACHE_CTRL_AND_STATUS, HPORT_ALLOCATE_SIGNAL) do not exist in the
+    //     vendored HAL at all.
+    //   - Zephyr cannot maintain it either: cache_siwx91x.c asserts the SoC has
+    //     no data cache, CPU_HAS_DCACHE is never selected, and sys_cache_data_*
+    //     return -ENOTSUP.
+    //
+    // The result is an unmaintained write-allocate cache in front of memory a
+    // second bus master (the NWP) also writes, which corrupts Python objects
+    // under allocation churn: ints that become functions, bytearrays with wrong
+    // lengths, garbled qstrs, and MPU faults through pointers read from PSRAM.
+    // Disable it here, before any TLSF pool exists.
+    //
+    // Only bit 0 of CTRL clears; bit 1 is sticky, and MAINT_STATUS settles at
+    // 0x100 rather than 0. Do not spin waiting for zero -- the vendor's own
+    // disable path does exactly that and would hang on this silicon.
+    //
+    // This is a workaround, not a fix. The fix is either a real cache driver for
+    // the peripheral or clearing HPROT allocate the way the vendor intended.
+    volatile uint32_t *dcache_ctrl = (volatile uint32_t *)(0x44040000 + 0x010);
+    volatile uint32_t *dcache_maint = (volatile uint32_t *)(0x44040000 + 0x028);
+    uint32_t dcache_ctrl_before = *dcache_ctrl;
+    uint32_t dcache_maint_before = *dcache_maint;
+    *dcache_ctrl &= ~1u;
+    barrier_dsync_fence_full();
+    barrier_isync_fence_full();
+    printk("PSRAM dcache disabled: CTRL %08x -> %08x, MAINT %08x -> %08x\n",
+        dcache_ctrl_before, *dcache_ctrl, dcache_maint_before, *dcache_maint);
+    #endif
+
     // Do a test malloc to determine if Zephyr has an outer heap that may
     // overlap with a memory region we've identified in ram_bounds. We'll
     // corrupt each other if we both use it.
