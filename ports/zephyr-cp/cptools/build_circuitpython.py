@@ -599,7 +599,23 @@ async def build_circuitpython():
         enabled = mpflag in DEFAULT_MODULES
         circuitpython_flags.append(f"-DCIRCUITPY_{mpflag.upper()}={1 if enabled else 0}")
 
+    # ulab is opt-in per board via CIRCUITPY_ULAB in circuitpython.toml. It adds
+    # roughly 100 KB, so it is not enabled by default. Flags mirror py/py.mk.
+    ulab_enabled = bool(mpconfigboard.get("CIRCUITPY_ULAB", False))
+    circuitpython_flags.append(f"-DCIRCUITPY_ULAB={1 if ulab_enabled else 0}")
+    if ulab_enabled:
+        circuitpython_flags.extend(
+            (
+                "-DMODULE_ULAB_ENABLED=1",
+                "-DULAB_HAS_USER_MODULE=0",
+                "-iquote",
+                str(top / "extmod" / "ulab" / "code"),
+            )
+        )
+
     source_files = supervisor_source + hal_source + ["extmod/vfs.c"]
+    if ulab_enabled:
+        source_files.extend(sorted((top / "extmod" / "ulab" / "code").rglob("*.c")))
     assembly_files = []
     for file in top.glob("py/*.c"):
         source_files.append(file)
