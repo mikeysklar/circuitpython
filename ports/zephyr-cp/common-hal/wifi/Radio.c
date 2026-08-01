@@ -487,11 +487,22 @@ wifi_radio_error_t common_hal_wifi_radio_connect(wifi_radio_obj_t *self, uint8_t
         memcpy(params.bssid, bssid, WIFI_MAC_ADDR_LEN);
     }
 
-    // Connecting while already associated is rejected by the driver with
-    // -EALREADY ("Device already in active state"), and the resulting failure
-    // path takes the interface back down, so a reconnect attempt would drop a
-    // working link. Drop the existing association first and let the normal
-    // connect path run.
+    // Already associated to the network being asked for: leave the link alone.
+    // supervisor_start_web_workflow() calls connect() on every invocation,
+    // before it checks CIRCUITPY_WEB_API_PASSWORD, so tearing the association
+    // down here churns the link continuously and the board never holds a DHCP
+    // lease.
+    if (self->connected &&
+        ssid_len == self->current_ssid_len &&
+        memcmp(ssid, self->current_ssid, ssid_len) == 0) {
+        return WIFI_RADIO_ERROR_NONE;
+    }
+
+    // Switching networks. Connecting while already associated is rejected by
+    // the driver with -EALREADY ("Device already in active state"), and the
+    // resulting failure path takes the interface back down, so a reconnect
+    // attempt would drop a working link. Drop the existing association first
+    // and let the normal connect path run.
     if (self->connected) {
         int disc = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, self->sta_netif, NULL, 0);
         if (disc < 0 && disc != -EALREADY) {
@@ -552,6 +563,11 @@ wifi_radio_error_t common_hal_wifi_radio_connect(wifi_radio_obj_t *self, uint8_t
                 return WIFI_RADIO_ERROR_CONNECTION_FAIL;
         }
     }
+
+    // Remember which network this association is for, so a later connect() for
+    // the same SSID can return without disturbing it.
+    self->current_ssid_len = MIN(ssid_len, sizeof(self->current_ssid));
+    memcpy(self->current_ssid, ssid, self->current_ssid_len);
 
     // Associated. Ask for an address; the AP side of DHCP can take a moment.
     #if defined(CONFIG_NET_DHCPV4)
