@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <zephyr/sys/atomic.h>
+
 #include <zephyr/bluetooth/addr.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -39,6 +41,28 @@ static struct bt_data adv_data[BLEIO_ADV_MAX_FIELDS];
 static struct bt_data scan_resp_data[BLEIO_ADV_MAX_FIELDS];
 static uint8_t adv_data_storage[BLEIO_ADV_MAX_DATA_LEN];
 static uint8_t scan_resp_storage[BLEIO_ADV_MAX_DATA_LEN];
+
+// Advertising state retained so that connectable advertising can be resumed
+// after a disconnect.  The controller stops the advertiser when a connection is
+// established and Zephyr has no restart path of its own, so without this the
+// peripheral accepts exactly one connection per boot and is then invisible
+// until reset.  The payload arrays above are already file-scope; only the
+// parameters and the field counts were locals of start_advertising().
+static struct bt_le_adv_param retained_adv_params;
+static size_t retained_adv_count;
+static size_t retained_scan_resp_count;
+
+// Whether advertising *should* be running.  Distinct from ble_advertising,
+// which tracks whether it *is*.  They differ for exactly as long as a
+// connection is up.
+static bool ble_advertising_intent = false;
+
+// Set from the disconnected callback, consumed by the background task.  The
+// callback runs in Zephyr's BT thread, where bt_le_adv_start() must not be
+// called: it blocks waiting for an HCI command completion that the same thread
+// is responsible for delivering.  Zephyr's own peripheral samples set a flag in
+// the callback and restart from their main loop for this reason.
+static atomic_t ble_advertising_resume_pending = ATOMIC_INIT(0);
 
 static uint8_t bleio_address_type_from_zephyr(const bt_addr_le_t *addr) {
     if (addr == NULL) {
@@ -161,6 +185,36 @@ static void bleio_connected_cb(struct bt_conn *conn, uint8_t err) {
 static void bleio_disconnected_cb(struct bt_conn *conn, uint8_t reason) {
     printk("disconnected %p\n", conn);
     bleio_connection_release(bleio_connection_find_by_conn(conn), reason);
+
+    // Only flag the work; see ble_advertising_resume_pending above for why the
+    // restart cannot happen here.
+    if (ble_advertising_intent && !ble_advertising) {
+        atomic_set(&ble_advertising_resume_pending, 1);
+    }
+}
+
+// Called from port_background_task(), i.e. the CircuitPython thread.
+void bleio_background(void) {
+    if (!atomic_cas(&ble_advertising_resume_pending, 1, 0)) {
+        return;
+    }
+
+    if (!ble_advertising_intent || ble_advertising || !ble_adapter_enabled) {
+        return;
+    }
+
+    int err = bt_le_adv_start(&retained_adv_params,
+        adv_data,
+        retained_adv_count,
+        retained_scan_resp_count > 0 ? scan_resp_data : NULL,
+        retained_scan_resp_count);
+    if (err) {
+        // Nothing to raise into: no Python frame is on the stack here.
+        printk("_bleio: failed to resume advertising after disconnect (%d)\n", err);
+        return;
+    }
+
+    ble_advertising = true;
 }
 
 BT_CONN_CB_DEFINE(bleio_connection_callbacks) = {
@@ -459,10 +513,27 @@ void common_hal_bleio_adapter_start_advertising(bleio_adapter_obj_t *self,
         scan_resp_count));
 
     ble_advertising = true;
+
+    // Retain everything the resume path needs.  Only connectable advertising is
+    // resumed: the controller does not stop a non-connectable advertiser on
+    // connect, so there is nothing to restart.
+    retained_adv_params = adv_params;
+    retained_adv_count = adv_count;
+    retained_scan_resp_count = scan_resp_count;
+    ble_advertising_intent = connectable;
 }
 
 void common_hal_bleio_adapter_stop_advertising(bleio_adapter_obj_t *self) {
     (void)self;
+
+    // Clear the intent *before* the early return.  A stop issued while a
+    // connection is up finds ble_advertising already false (the controller
+    // stopped the advertiser on connect), so returning early here would leave
+    // the intent set and the next disconnect would silently re-advertise
+    // something the caller had explicitly stopped.
+    ble_advertising_intent = false;
+    atomic_set(&ble_advertising_resume_pending, 0);
+
     if (!ble_advertising) {
         return;
     }
@@ -663,6 +734,9 @@ void bleio_adapter_reset(bleio_adapter_obj_t *adapter) {
     }
 
     common_hal_bleio_adapter_stop_scan(adapter);
+    // Also clears ble_advertising_intent and any pending resume, so a VM reset
+    // cannot leave advertising restarting itself on behalf of code that is no
+    // longer running.
     common_hal_bleio_adapter_stop_advertising(adapter);
 
     for (size_t i = 0; i < BLEIO_TOTAL_CONNECTION_COUNT; i++) {

@@ -27,3 +27,7 @@ typedef struct {
 
 void bleio_adapter_gc_collect(bleio_adapter_obj_t *adapter);
 void bleio_adapter_reset(bleio_adapter_obj_t *adapter);
+
+// Deferred BLE work that must not run in Zephyr's BT thread.  Called from
+// port_background_task().
+void bleio_background(void);
