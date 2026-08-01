@@ -302,13 +302,17 @@ mp_int_t common_hal_bleio_adapter_get_tx_power(bleio_adapter_obj_t *self) {
     return power;
 }
 
-void common_hal_bleio_adapter_set_tx_power(bleio_adapter_obj_t *self, mp_int_t tx_power) {
+// Returns a Zephyr error code rather than raising, so callers can treat setting
+// Tx power as best-effort. BT_HCI_OP_VS_WRITE_TX_POWER_LEVEL is a Zephyr
+// vendor-specific command that not every controller implements; the SiWx91x
+// answers "Unknown HCI Command" (status 0x01) and the call comes back -EIO.
+static int _try_set_tx_power(mp_int_t tx_power) {
     struct bt_hci_cp_vs_write_tx_power_level *cp;
     struct net_buf *buf, *rsp = NULL;
 
     buf = bt_hci_cmd_alloc(K_MSEC(3000));
     if (!buf) {
-        mp_raise_msg(&mp_type_MemoryError, NULL);
+        return -ENOMEM;
     }
     cp = net_buf_add(buf, sizeof(*cp));
     cp->handle_type = BT_HCI_VS_LL_HANDLE_TYPE_ADV;
@@ -317,10 +321,21 @@ void common_hal_bleio_adapter_set_tx_power(bleio_adapter_obj_t *self, mp_int_t t
 
     int err = bt_hci_cmd_send_sync(BT_HCI_OP_VS_WRITE_TX_POWER_LEVEL, buf, &rsp);
     if (err) {
-        raise_zephyr_error(err);
+        return err;
     }
 
     net_buf_unref(rsp);
+    return 0;
+}
+
+void common_hal_bleio_adapter_set_tx_power(bleio_adapter_obj_t *self, mp_int_t tx_power) {
+    int err = _try_set_tx_power(tx_power);
+    if (err) {
+        if (err == -ENOMEM) {
+            mp_raise_msg(&mp_type_MemoryError, NULL);
+        }
+        raise_zephyr_error(err);
+    }
 }
 
 bleio_address_obj_t *common_hal_bleio_adapter_get_address(bleio_adapter_obj_t *self) {
@@ -428,7 +443,15 @@ void common_hal_bleio_adapter_start_advertising(bleio_adapter_obj_t *self,
             NULL);
     }
 
-    common_hal_bleio_adapter_set_tx_power(self, tx_power);
+    // Best-effort: a controller that does not implement Zephyr's vendor-specific
+    // Tx power command must still be able to advertise. Previously a failure
+    // here aborted start_advertising() entirely, which made advertising
+    // impossible on such controllers (e.g. the SiWx91x).
+    int tx_power_err = _try_set_tx_power(tx_power);
+    if (tx_power_err) {
+        printk("_bleio: controller rejected Tx power %d (%d); advertising anyway\n",
+            (int)tx_power, tx_power_err);
+    }
 
     raise_zephyr_error(bt_le_adv_start(&adv_params,
         adv_data,
