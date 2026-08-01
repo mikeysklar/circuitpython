@@ -40,6 +40,31 @@
 //   0x202000 + 1M      code_partition   -> ends 0x302000
 //   0x302000 + 984K    circuitpy        -> ends 0x3f8000
 //   0x3f8000 + 32K     storage (unchanged)
+// PSRAM is kept OUT of the CircuitPython heap until it is understood.
+//
+// The 8 MB PSRAM at 0xa000000 works as memory: sparse writes across a 64 KB
+// buffer verify correctly and a 64 KB allocation succeeds. But using it as the
+// Python heap corrupts objects under sustained allocation, and the failure is
+// not about large buffers - a plain `for i in range(200000): s = s + i` with no
+// buffer at all hangs the board. Symptoms are corrupted objects: an int that
+// became a function, a bytearray with a wrong length, and an MPU fault calling
+// a garbage pointer read from PSRAM:
+//
+//   ***** MPU FAULT *****  Instruction Access Violation
+//   r0/a1: 0x0a0012c0  r12/ip: 0x0a0031ac   <- PSRAM pointers
+//   PC:    0x410e29c8                       <- called through r3, garbage
+//
+// Not a timing problem: identical at fast-freq 144 MHz and 33 MHz. Not the
+// NWP-reserved/DMA pools either; excluding those (supervisor/port.c minimum
+// region size) did not help.
+//
+// Disabling the node keeps it out of the generated ram_bounds[], so the heap
+// falls back to the 319 KB internal sram0, which is ample for CircuitPython.
+// Re-enable once the root cause is found - the 8 MB is worth having.
+&psram {
+	status = "disabled";
+};
+
 &flash0 {
 	partitions {
 		code_partition: partition@202000 {

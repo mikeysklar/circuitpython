@@ -1,1 +1,2 @@
 CIRCUITPY_BUILD_EXTENSIONS = ["elf", "hex"]
+CIRCUITPY_ULAB = true
