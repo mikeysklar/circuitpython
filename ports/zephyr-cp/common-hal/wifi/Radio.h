@@ -13,6 +13,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/net/net_if.h>
+#include <zephyr/net/wifi.h>
 
 // Event bits for the Radio event group.
 #define WIFI_SCAN_DONE_BIT BIT0
@@ -45,6 +46,10 @@ typedef struct {
     // Latest wifi_conn_status from NET_EVENT_WIFI_CONNECT_RESULT.
     int last_connect_status;
     bool connected;
+    // SSID of the association that `connected` refers to, so that a connect()
+    // for the network we are already on can return without touching the link.
+    uint8_t current_ssid[WIFI_SSID_MAX_LEN];
+    size_t current_ssid_len;
 } wifi_radio_obj_t;
 
 extern void common_hal_wifi_radio_gc_collect(wifi_radio_obj_t *self);
