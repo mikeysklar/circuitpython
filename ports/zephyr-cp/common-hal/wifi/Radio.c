@@ -504,10 +504,9 @@ wifi_radio_error_t common_hal_wifi_radio_connect(wifi_radio_obj_t *self, uint8_t
     // attempt would drop a working link. Drop the existing association first
     // and let the normal connect path run.
     if (self->connected) {
-        int disc = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, self->sta_netif, NULL, 0);
-        if (disc < 0 && disc != -EALREADY) {
-            printk("NET_REQUEST_WIFI_DISCONNECT failed: %d\n", disc);
-        }
+        // A failure here is tolerated on purpose: if the interface really is
+        // unusable, the connect below returns a proper error to the caller.
+        (void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, self->sta_netif, NULL, 0);
         // Give the controller a moment to tear the association down.
         for (int i = 0; i < 40 && self->connected; i++) {
             k_msleep(50);
@@ -523,12 +522,10 @@ wifi_radio_error_t common_hal_wifi_radio_connect(wifi_radio_obj_t *self, uint8_t
     int res = net_mgmt(NET_REQUEST_WIFI_CONNECT, self->sta_netif, &params, sizeof(params));
     if (res == -EALREADY) {
         // Already associated to this network. Nothing to do.
-        printk("wifi already connected\n");
         self->connected = true;
         return WIFI_RADIO_ERROR_NONE;
     }
     if (res < 0) {
-        printk("NET_REQUEST_WIFI_CONNECT failed: %d\n", res);
         return WIFI_RADIO_ERROR_UNSPECIFIED;
     }
 
@@ -548,7 +545,6 @@ wifi_radio_error_t common_hal_wifi_radio_connect(wifi_radio_obj_t *self, uint8_t
     }
 
     if (!signalled) {
-        printk("connect timed out\n");
         return WIFI_RADIO_ERROR_HANDSHAKE_TIMEOUT;
     }
     if (!self->connected) {
