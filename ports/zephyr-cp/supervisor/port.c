@@ -43,6 +43,10 @@
 static tlsf_t heap;
 static size_t tlsf_heap_used = 0;
 
+// Smallest memory region worth adding to the Python heap. Also keeps tiny
+// special-purpose regions (NWP-reserved memory, DMA buffers) out of it.
+#define MIN_HEAP_REGION_SIZE (8 * 1024)
+
 // Auto generated in pins.c
 extern const struct device *const rams[];
 extern const uint32_t *const ram_bounds[];
@@ -296,8 +300,18 @@ void port_heap_init(void) {
         // build time. (The ram_bounds values are sometimes determined by the
         // linker.) So, we need to guard against regions that aren't actually
         // free.
-        if (size < 1024) {
-            printk("Skipping region because the linker filled it up.\n");
+        // Regions this small are never usefully part of the Python heap, and on
+        // some SoCs they are actively dangerous to allocate from. The siwx91x
+        // exposes two 1 KB regions that must not be used: memory@0 is reserved
+        // for the network processor ("The first 1KB of SRAM is reserved for the
+        // NWP"), and memory-dma@24061c00 is a DMA buffer. Handing Python
+        // objects out of either lets hardware outside the CPU overwrite them,
+        // which shows up much later as an int that has become a function, a
+        // bytearray whose length is wrong, or a jump through a corrupted
+        // pointer. Note the old bound was `< 1024`, which let a region of
+        // exactly 1024 bytes through.
+        if (size < MIN_HEAP_REGION_SIZE) {
+            printk("Skipping region at %p: too small (%d bytes)\n", heap_bottom, size);
             continue;
         }
         #ifdef CONFIG_COMMON_LIBC_MALLOC
