@@ -28,8 +28,6 @@
 #include "shared-module/_bleio/ScanResults.h"
 #include "supervisor/shared/tick.h"
 
-#include "common-hal/_bleio/test_gatt_service.h"  // TEMPORARY, see test_gatt_service.c
-
 bleio_connection_internal_t bleio_connections[BLEIO_TOTAL_CONNECTION_COUNT];
 
 static bool scan_callbacks_registered = false;
@@ -388,7 +386,6 @@ void common_hal_bleio_adapter_set_enabled(bleio_adapter_obj_t *self, bool enable
             if (err != 0) {
                 raise_zephyr_error(err);
             }
-            test_gatt_service_check();  // TEMPORARY, see test_gatt_service.c
         }
         ble_adapter_enabled = true;
         return;
