@@ -314,6 +314,12 @@ void port_heap_init(void) {
     // whichever happens to come first: a board whose first region is tiny (the
     // SiWx917 has two 1 KB regions ahead of 8 MB of PSRAM) otherwise builds its
     // heap in a space too small to use, and the first real allocation aborts.
+    //
+    // On the SiWx917 this reorder puts the control block in PSRAM, which is
+    // only safe because the dcache disable above already ran with no
+    // allocation in between (flagged by Hermes, #the-forge, 2026-08-04). This
+    // block must keep running after that one -- moving it earlier reintroduces
+    // the write-allocate corruption the disable exists to prevent.
     size_t largest_index = 0;
     size_t largest_size = 0;
     for (size_t i = 0; i < CIRCUITPY_RAM_DEVICE_COUNT; i++) {
