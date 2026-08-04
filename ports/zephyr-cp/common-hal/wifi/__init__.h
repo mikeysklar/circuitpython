@@ -8,9 +8,18 @@
 
 #include "py/obj.h"
 
+#include <zephyr/net/wifi_mgmt.h>
+
 struct sockaddr_storage;
 
 void wifi_reset(void);
+
+// Look up an SSID in the cache of the most recent scan. Returns NULL if the
+// network was not seen. Used by common_hal_wifi_radio_connect() to request the
+// security type the AP actually advertises: the SiWx91x driver rejects a WPA2
+// handshake on a WPA3-SAE AP and vice versa, and both failures look like a
+// generic authentication error.
+struct wifi_scan_result *wifi_cached_scan_lookup(const uint8_t *ssid, size_t ssid_len);
 
 // void ipaddress_ipaddress_to_esp_idf(mp_obj_t ip_address, ip_addr_t *esp_ip_address);
 // void ipaddress_ipaddress_to_esp_idf_ip4(mp_obj_t ip_address, esp_ip4_addr_t *esp_ip_address);
