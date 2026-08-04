@@ -109,9 +109,7 @@ def test_fs_put_get_delete_cycle():
     body = (f"# web workflow hw probe {time.time()}\n" + "x" * 512).encode()
     digest = hashlib.sha256(body).hexdigest()
 
-    response = _session.put(
-        url("/fs/probe_hw_test.py"), auth=auth(), data=body, timeout=TIMEOUT
-    )
+    response = _session.put(url("/fs/probe_hw_test.py"), auth=auth(), data=body, timeout=TIMEOUT)
     assert response.status_code in (201, 204)
 
     # A filesystem write triggers auto-reload; the workflow restarts with the
@@ -130,9 +128,7 @@ def test_fs_put_get_delete_cycle():
     assert response.status_code == 200
     assert hashlib.sha256(response.content).hexdigest() == digest
 
-    response = _session.delete(
-        url("/fs/probe_hw_test.py"), auth=auth(), timeout=TIMEOUT
-    )
+    response = _session.delete(url("/fs/probe_hw_test.py"), auth=auth(), timeout=TIMEOUT)
     assert response.status_code == 204
 
     response = get_with_retry("/fs/probe_hw_test.py")
@@ -210,9 +206,7 @@ def test_http_survives_concurrent_ble_gatt():
         results = {"gatt_reads": 0, "gatt_fails": 0, "http_ok": 0, "http_fails": 0}
 
         async def run():
-            device = await bleak.BleakScanner.find_device_by_name(
-                "SiWx917-HWTEST", timeout=20.0
-            )
+            device = await bleak.BleakScanner.find_device_by_name("SiWx917-HWTEST", timeout=20.0)
             assert device is not None, "board not found over BLE"
             async with bleak.BleakClient(device) as client:
                 deadline = time.monotonic() + 30.0
