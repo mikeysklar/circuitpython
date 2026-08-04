@@ -40,14 +40,18 @@ pytestmark = [
 
 TIMEOUT = 10.0
 
-# One shared Session so all requests reuse a single connection. Without this,
-# each bare requests.get() parks its socket in keep-alive; after four of them
-# the board's accept pool is exhausted and the fifth connect is refused
-# outright. That ceiling is real board behavior (worth knowing), but a client
-# holding four idle sockets open against a microcontroller is a client
-# problem, and the suite's job is to regression-test the workflow, not to
-# leak connections at it.
-_session = requests.Session()
+# A Session with keep-alive disabled. The shared-connection version of this
+# was a workaround for the connection-pool exhaustion in issue #35; with
+# NET_MAX_CONN=12 that is fixed and 200 consecutive fresh connections run
+# clean. Reusing a pooled connection is now the liability instead: the board
+# closes idle keep-alive, so the next request on a stale one dies with
+# ECONNRESET (errno 54) rather than anything meaningful about the workflow.
+# Deliberately NO shared Session. The pooled-connection version was a
+# workaround for the pool exhaustion in issue #35; with NET_MAX_CONN=12 that
+# is fixed and 200 consecutive fresh connections measure clean. Reusing a
+# pooled connection is now the liability: the board closes idle keep-alive,
+# so a request on a stale one dies with ECONNRESET (errno 54), which says
+# nothing about the workflow under test.
 
 
 def url(path):
@@ -58,9 +62,33 @@ def auth():
     return ("", WEB_PASSWORD)
 
 
+def wait_until_stable(deadline_s=30.0, consecutive=3):
+    """Block until the workflow answers `consecutive` times in a row.
+
+    A filesystem write over /fs triggers CircuitPython's auto-reload, which
+    restarts the VM and with it the web workflow. Any test that runs after one
+    of those needs to let the board come back, or it measures the restart
+    instead of whatever it was written to measure.
+    """
+    deadline = time.monotonic() + deadline_s
+    streak = 0
+    while time.monotonic() < deadline:
+        try:
+            if requests.get(url("/cp/version.json"), timeout=TIMEOUT).status_code == 200:
+                streak += 1
+                if streak >= consecutive:
+                    return
+            else:
+                streak = 0
+        except requests.RequestException:
+            streak = 0
+        time.sleep(0.5)
+    raise AssertionError(f"workflow did not stabilise within {deadline_s}s")
+
+
 def test_version_json_ok():
     """/cp/version.json responds 200 with sane identity fields, no auth."""
-    response = _session.get(url("/cp/version.json"), timeout=TIMEOUT)
+    response = requests.get(url("/cp/version.json"), timeout=TIMEOUT)
     assert response.status_code == 200
     payload = response.json()
     assert payload["board_id"] == "silabs_siwx917_dk2605a"
@@ -75,7 +103,7 @@ def test_version_json_ok():
 )
 def test_version_json_runtime_fields_populated():
     """board_name, hostname and ip should reflect the running board."""
-    payload = _session.get(url("/cp/version.json"), timeout=TIMEOUT).json()
+    payload = requests.get(url("/cp/version.json"), timeout=TIMEOUT).json()
     assert payload["board_name"] != ""
     assert payload["hostname"] != ""
     assert payload["ip"] == BOARD_IP
@@ -83,33 +111,23 @@ def test_version_json_runtime_fields_populated():
 
 def test_fs_requires_auth():
     """/fs/ without credentials is 401, never an open listing."""
-    response = _session.get(url("/fs/"), timeout=TIMEOUT)
+    response = requests.get(url("/fs/"), timeout=TIMEOUT)
     assert response.status_code == 401
 
 
-@pytest.mark.xfail(
-    reason="connections refused after ~6 rapid requests, ~1.14s recovery "
-    "(mikeysklar/circuitpython#35); flips to XPASS when fixed",
-    strict=False,
-)
 @pytest.mark.skipif(WEB_PASSWORD is None, reason="CP_HW_WEB_PASSWORD not set")
 def test_fs_authenticated_listing():
-    response = _session.get(url("/fs/"), auth=auth(), timeout=TIMEOUT)
+    response = requests.get(url("/fs/"), auth=auth(), timeout=TIMEOUT)
     assert response.status_code == 200
 
 
-@pytest.mark.xfail(
-    reason="connections refused after ~6 rapid requests, ~1.14s recovery "
-    "(mikeysklar/circuitpython#35); flips to XPASS when fixed",
-    strict=False,
-)
 @pytest.mark.skipif(WEB_PASSWORD is None, reason="CP_HW_WEB_PASSWORD not set")
 def test_fs_put_get_delete_cycle():
     """PUT a probe file, read it back byte-exact, delete it, confirm gone."""
     body = (f"# web workflow hw probe {time.time()}\n" + "x" * 512).encode()
     digest = hashlib.sha256(body).hexdigest()
 
-    response = _session.put(url("/fs/probe_hw_test.py"), auth=auth(), data=body, timeout=TIMEOUT)
+    response = requests.put(url("/fs/probe_hw_test.py"), auth=auth(), data=body, timeout=TIMEOUT)
     assert response.status_code in (201, 204)
 
     # A filesystem write triggers auto-reload; the workflow restarts with the
@@ -118,7 +136,7 @@ def test_fs_put_get_delete_cycle():
         deadline = time.monotonic() + deadline_s
         while True:
             try:
-                return _session.get(url(path), auth=auth(), timeout=TIMEOUT)
+                return requests.get(url(path), auth=auth(), timeout=TIMEOUT)
             except requests.ConnectionError:
                 if time.monotonic() > deadline:
                     raise
@@ -128,28 +146,27 @@ def test_fs_put_get_delete_cycle():
     assert response.status_code == 200
     assert hashlib.sha256(response.content).hexdigest() == digest
 
-    response = _session.delete(url("/fs/probe_hw_test.py"), auth=auth(), timeout=TIMEOUT)
+    response = requests.delete(url("/fs/probe_hw_test.py"), auth=auth(), timeout=TIMEOUT)
     assert response.status_code == 204
 
     response = get_with_retry("/fs/probe_hw_test.py")
     assert response.status_code == 404
 
 
-@pytest.mark.xfail(
-    reason="connections refused after ~6 rapid requests, ~1.14s recovery "
-    "(mikeysklar/circuitpython#35); flips to XPASS when fixed",
-    strict=False,
-)
 def test_http_latency_sane():
     """20 sequential version.json fetches all succeed and none stalls.
 
     A generous per-request bound: the point is catching a wedged listener or
     a starved socket pool, not benchmarking.
     """
+    # Preceding tests write to /fs, which auto-reloads the board; measuring
+    # through that restart would time the reboot, not the listener.
+    wait_until_stable()
+
     worst = 0.0
     for _ in range(20):
         start = time.monotonic()
-        response = _session.get(url("/cp/version.json"), timeout=TIMEOUT)
+        response = requests.get(url("/cp/version.json"), timeout=TIMEOUT)
         elapsed = time.monotonic() - start
         assert response.status_code == 200
         worst = max(worst, elapsed)
@@ -223,7 +240,7 @@ def test_http_survives_concurrent_ble_gatt():
                     while time.monotonic() < deadline:
                         try:
                             response = await asyncio.to_thread(
-                                _session.get, url("/cp/version.json"), timeout=TIMEOUT
+                                requests.get, url("/cp/version.json"), timeout=TIMEOUT
                             )
                             if response.status_code == 200:
                                 results["http_ok"] += 1
