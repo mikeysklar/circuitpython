@@ -138,7 +138,10 @@ static void _event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_eve
             schedule_background_on_cp_core(NULL);
             break;
         default:
-            LOG_DBG("unhandled net event %x", (unsigned int)mgmt_event);
+            // Print all 64 bits: the layer lives in the high bits and the command
+            // in the low 52, so a 32-bit print collapses every unhandled event in
+            // a layer to the same aliased value (d0d00000 for any Wi-Fi event).
+            LOG_DBG("unhandled net event %llx", (unsigned long long)mgmt_event);
             break;
     }
 }
