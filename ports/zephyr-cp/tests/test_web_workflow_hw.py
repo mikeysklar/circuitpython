@@ -88,8 +88,8 @@ def test_fs_requires_auth():
 
 
 @pytest.mark.xfail(
-    reason="rapid-request refusal window (mikeysklar/circuitpython#35); "
-    "flips to XPASS when fixed",
+    reason="connections refused after ~6 rapid requests, ~1.14s recovery "
+    "(mikeysklar/circuitpython#35); flips to XPASS when fixed",
     strict=False,
 )
 @pytest.mark.skipif(WEB_PASSWORD is None, reason="CP_HW_WEB_PASSWORD not set")
@@ -99,8 +99,8 @@ def test_fs_authenticated_listing():
 
 
 @pytest.mark.xfail(
-    reason="rapid-request refusal window (mikeysklar/circuitpython#35); "
-    "flips to XPASS when fixed",
+    reason="connections refused after ~6 rapid requests, ~1.14s recovery "
+    "(mikeysklar/circuitpython#35); flips to XPASS when fixed",
     strict=False,
 )
 @pytest.mark.skipif(WEB_PASSWORD is None, reason="CP_HW_WEB_PASSWORD not set")
@@ -140,8 +140,8 @@ def test_fs_put_get_delete_cycle():
 
 
 @pytest.mark.xfail(
-    reason="rapid-request refusal window (mikeysklar/circuitpython#35); "
-    "flips to XPASS when fixed",
+    reason="connections refused after ~6 rapid requests, ~1.14s recovery "
+    "(mikeysklar/circuitpython#35); flips to XPASS when fixed",
     strict=False,
 )
 def test_http_latency_sane():
