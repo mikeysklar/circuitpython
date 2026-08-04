@@ -123,14 +123,19 @@ void common_hal_wifi_radio_set_hostname(wifi_radio_obj_t *self, const char *host
     }
 }
 
-mp_obj_t common_hal_wifi_radio_get_mac_address(wifi_radio_obj_t *self) {
-    uint8_t mac[MAC_ADDRESS_LENGTH] = { 0 };
+void wifi_radio_get_mac_address(wifi_radio_obj_t *self, uint8_t *mac) {
+    memset(mac, 0, MAC_ADDRESS_LENGTH);
     if (self->sta_netif != NULL) {
         struct net_linkaddr *addr = net_if_get_link_addr(self->sta_netif);
         if (addr != NULL && addr->len >= MAC_ADDRESS_LENGTH) {
             memcpy(mac, addr->addr, MAC_ADDRESS_LENGTH);
         }
     }
+}
+
+mp_obj_t common_hal_wifi_radio_get_mac_address(wifi_radio_obj_t *self) {
+    uint8_t mac[MAC_ADDRESS_LENGTH];
+    wifi_radio_get_mac_address(self, mac);
     return mp_obj_new_bytes(mac, MAC_ADDRESS_LENGTH);
 }
 
@@ -700,6 +705,11 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_gateway(wifi_radio_obj_t *self) {
     if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
         return mp_const_none;
     }
+    // struct net_if_ip's `ipv4` member only exists when CONFIG_NET_IPV4 is
+    // set (net/net_if.h) -- siwx917 always has it, but this file is also
+    // compiled for every other Wi-Fi board in the port's CI matrix, and not
+    // all of them turn IPv4 on. A board without it just has no IPv4 gateway.
+    #if defined(CONFIG_NET_IPV4)
     const struct net_if_config *cfg = net_if_get_config(self->sta_netif);
     if (cfg == NULL || cfg->ip.ipv4 == NULL) {
         return mp_const_none;
@@ -708,6 +718,9 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_gateway(wifi_radio_obj_t *self) {
         return mp_const_none;
     }
     return common_hal_ipaddress_new_ipv4address(cfg->ip.ipv4->gw.s_addr);
+    #else
+    return mp_const_none;
+    #endif
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_gateway_ap(wifi_radio_obj_t *self) {
@@ -723,6 +736,10 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_subnet(wifi_radio_obj_t *self) {
     if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
         return mp_const_none;
     }
+    // See the comment in common_hal_wifi_radio_get_ipv4_gateway: `ipv4` only
+    // exists on struct net_if_ip when CONFIG_NET_IPV4 is set, and this file
+    // is compiled for every Wi-Fi board in the port, not just ones with it on.
+    #if defined(CONFIG_NET_IPV4)
     struct net_if_ipv4 *ipv4 = self->sta_netif->config.ip.ipv4;
     if (ipv4 == NULL) {
         return mp_const_none;
@@ -734,6 +751,7 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_subnet(wifi_radio_obj_t *self) {
                 ipv4->unicast[i].netmask.s_addr);
         }
     }
+    #endif
     return mp_const_none;
 }
 
