@@ -90,3 +90,57 @@
 		};
 	};
 };
+
+// --- SPI (GSPI) --------------------------------------------------------------
+// Issue #3. The board .dts leaves spi0 disabled and carries a bare
+// `/* TODO: Add ICMCM-40627 with SSI */` comment; nothing wires the bus.
+//
+// Pin assignment is NOT guessed. Upstream Zephyr already ships a verified
+// mapping for this exact board in
+// zephyr/tests/drivers/spi/spi_loopback/boards/siwx917_dk2605a.overlay
+// (Silicon Laboratories Inc., 2025), which routes GSPI to the breakout pads:
+//
+//   CLK  -> GSPI_CLK_HP25    (breakout PAD 3)
+//   MOSI -> GSPI_MOSI_HP27   (breakout PAD 5)
+//   MISO -> GSPI_MISO_HP26   (breakout PAD 7)
+//   CS   -> gpiob 12, active low
+//
+// Note the SoC dtsi has exactly ONE SPI controller node, spi0, and it is
+// `compatible = "silabs,gspi"`. There is no `ssi` node in
+// dts/arm/silabs/siwg917.dtsi at all, so the board comment's "with SSI" is not
+// reachable from devicetree today: SSI and GSPI are separate peripherals in the
+// WiSeConnect HAL (peripherals-ssi vs peripherals-gspi) and Zephyr ships only a
+// GSPI controller driver (drivers/spi/spi_silabs_siwx91x_gspi.c). SSI pinmux
+// macros exist in siwx91x-pinctrl.h but have no controller behind them.
+//
+// Per UG581 §3.4.3 Fig 3.6 the on-board ICM-40627 IMU is on the ULP SPI via
+// ULP GPIO pins (ULP_GPIO_8/1/2/10), a third bus distinct from both GSPI and
+// SSI — see issue #4. This GSPI bus serves the breakout pads only.
+//
+// cptools/compat2driver.py already maps "silabs_gspi" -> "spi", so enabling the
+// node is sufficient for zephyr2cp.py to emit board.SPI / busio.SPI.
+&pinctrl0 {
+	spi0_default: spi0_default {
+		out {
+			pinmux = <GSPI_CLK_HP25>, <GSPI_MOSI_HP27>;
+		};
+
+		in {
+			pinmux = <GSPI_MISO_HP26>;
+		};
+	};
+};
+
+&spi0 {
+	status = "okay";
+	cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&spi0_default>;
+	pinctrl-names = "default";
+
+	dmas = <&gpdma 0 11>, <&gpdma 1 10>;
+	dma-names = "tx", "rx";
+};
+
+&gpdma {
+	status = "okay";
+};
