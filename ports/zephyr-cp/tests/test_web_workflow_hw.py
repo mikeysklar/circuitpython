@@ -1,0 +1,256 @@
+# SPDX-FileCopyrightText: 2026 Mikey Sklar
+# SPDX-License-Identifier: MIT
+
+"""Web workflow regression tests against a real board.
+
+The native_sim tests in test_web_workflow.py exercise the workflow over
+hostnetwork only; nothing there touches a real radio, which is how the
+listener-error bug fixed in siwx917/fix-web-workflow-listener-errors
+survived upstream since 2023 (PR #7836). This module runs the
+verified-working baseline from issue #10 against actual hardware.
+
+These tests are skipped unless a board is provided via environment:
+
+    CP_HW_BOARD_IP      board's IP address (required)
+    CP_HW_WEB_PASSWORD  CIRCUITPY_WEB_API_PASSWORD value (required for /fs)
+    CP_HW_SERIAL_PORT   serial port for the BLE-concurrency test (optional)
+
+Run:
+
+    CP_HW_BOARD_IP=... CP_HW_WEB_PASSWORD=... pytest -m hw test_web_workflow_hw.py
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import time
+
+import pytest
+import requests
+
+BOARD_IP = os.environ.get("CP_HW_BOARD_IP")
+WEB_PASSWORD = os.environ.get("CP_HW_WEB_PASSWORD")
+SERIAL_PORT = os.environ.get("CP_HW_SERIAL_PORT")
+
+pytestmark = [
+    pytest.mark.hw,
+    pytest.mark.skipif(BOARD_IP is None, reason="CP_HW_BOARD_IP not set"),
+]
+
+TIMEOUT = 10.0
+
+# One shared Session so all requests reuse a single connection. Without this,
+# each bare requests.get() parks its socket in keep-alive; after four of them
+# the board's accept pool is exhausted and the fifth connect is refused
+# outright. That ceiling is real board behavior (worth knowing), but a client
+# holding four idle sockets open against a microcontroller is a client
+# problem, and the suite's job is to regression-test the workflow, not to
+# leak connections at it.
+_session = requests.Session()
+
+
+def url(path):
+    return f"http://{BOARD_IP}{path}"
+
+
+def auth():
+    return ("", WEB_PASSWORD)
+
+
+def test_version_json_ok():
+    """/cp/version.json responds 200 with sane identity fields, no auth."""
+    response = _session.get(url("/cp/version.json"), timeout=TIMEOUT)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["board_id"] == "silabs_siwx917_dk2605a"
+    assert payload["web_api_version"] >= 4
+    assert payload["mcu_name"] == "siwg917m111mgtba"
+
+
+@pytest.mark.xfail(
+    reason="board_name/hostname/ip are empty in version.json on real hardware "
+    "(mikeysklar/circuitpython#34); flips to XPASS when fixed",
+    strict=False,
+)
+def test_version_json_runtime_fields_populated():
+    """board_name, hostname and ip should reflect the running board."""
+    payload = _session.get(url("/cp/version.json"), timeout=TIMEOUT).json()
+    assert payload["board_name"] != ""
+    assert payload["hostname"] != ""
+    assert payload["ip"] == BOARD_IP
+
+
+def test_fs_requires_auth():
+    """/fs/ without credentials is 401, never an open listing."""
+    response = _session.get(url("/fs/"), timeout=TIMEOUT)
+    assert response.status_code == 401
+
+
+@pytest.mark.xfail(
+    reason="rapid-request refusal window (mikeysklar/circuitpython#35); "
+    "flips to XPASS when fixed",
+    strict=False,
+)
+@pytest.mark.skipif(WEB_PASSWORD is None, reason="CP_HW_WEB_PASSWORD not set")
+def test_fs_authenticated_listing():
+    response = _session.get(url("/fs/"), auth=auth(), timeout=TIMEOUT)
+    assert response.status_code == 200
+
+
+@pytest.mark.xfail(
+    reason="rapid-request refusal window (mikeysklar/circuitpython#35); "
+    "flips to XPASS when fixed",
+    strict=False,
+)
+@pytest.mark.skipif(WEB_PASSWORD is None, reason="CP_HW_WEB_PASSWORD not set")
+def test_fs_put_get_delete_cycle():
+    """PUT a probe file, read it back byte-exact, delete it, confirm gone."""
+    body = (f"# web workflow hw probe {time.time()}\n" + "x" * 512).encode()
+    digest = hashlib.sha256(body).hexdigest()
+
+    response = _session.put(
+        url("/fs/probe_hw_test.py"), auth=auth(), data=body, timeout=TIMEOUT
+    )
+    assert response.status_code in (201, 204)
+
+    # A filesystem write triggers auto-reload; the workflow restarts with the
+    # VM. Give follow-up requests a short retry window across the bounce.
+    def get_with_retry(path, deadline_s=15.0):
+        deadline = time.monotonic() + deadline_s
+        while True:
+            try:
+                return _session.get(url(path), auth=auth(), timeout=TIMEOUT)
+            except requests.ConnectionError:
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(1.0)
+
+    response = get_with_retry("/fs/probe_hw_test.py")
+    assert response.status_code == 200
+    assert hashlib.sha256(response.content).hexdigest() == digest
+
+    response = _session.delete(
+        url("/fs/probe_hw_test.py"), auth=auth(), timeout=TIMEOUT
+    )
+    assert response.status_code == 204
+
+    response = get_with_retry("/fs/probe_hw_test.py")
+    assert response.status_code == 404
+
+
+@pytest.mark.xfail(
+    reason="rapid-request refusal window (mikeysklar/circuitpython#35); "
+    "flips to XPASS when fixed",
+    strict=False,
+)
+def test_http_latency_sane():
+    """20 sequential version.json fetches all succeed and none stalls.
+
+    A generous per-request bound: the point is catching a wedged listener or
+    a starved socket pool, not benchmarking.
+    """
+    worst = 0.0
+    for _ in range(20):
+        start = time.monotonic()
+        response = _session.get(url("/cp/version.json"), timeout=TIMEOUT)
+        elapsed = time.monotonic() - start
+        assert response.status_code == 200
+        worst = max(worst, elapsed)
+    assert worst < 5.0, f"worst latency {worst:.2f}s"
+
+
+@pytest.mark.skipif(SERIAL_PORT is None, reason="CP_HW_SERIAL_PORT not set")
+def test_http_survives_concurrent_ble_gatt():
+    """Sustained GATT reads concurrent with HTTP traffic; the #13 leftover.
+
+    Starts a BLE GATT service + advertising on the board over raw REPL,
+    connects from this host with bleak, then hammers GATT reads while running
+    HTTP requests. Both sides must complete with zero failures. Covers the
+    gap noted when #13 closed: coexistence was measured with BLE sampled, not
+    stressed.
+    """
+    bleak = pytest.importorskip("bleak")
+    serial = pytest.importorskip("serial")
+    import asyncio
+
+    setup = (
+        b"import _bleio\n"
+        b"svc = _bleio.Service(_bleio.UUID(0x1234))\n"
+        b"chrc = _bleio.Characteristic.add_to_service(\n"
+        b"    svc, _bleio.UUID(0x5678), max_length=20, fixed_length=False,\n"
+        b"    properties=_bleio.Characteristic.READ | _bleio.Characteristic.WRITE,\n"
+        b"    read_perm=_bleio.Attribute.OPEN, write_perm=_bleio.Attribute.OPEN,\n"
+        b"    initial_value=b'hw-test')\n"
+        b"_bleio.adapter.name = 'SiWx917-HWTEST'\n"
+        b"adv = bytes([15, 0x09]) + b'SiWx917-HWTEST'\n"
+        b"_bleio.adapter.start_advertising(adv, connectable=True)\n"
+        b"print('ADV', _bleio.adapter.advertising)\n"
+    )
+
+    s = serial.Serial(SERIAL_PORT, 115200, timeout=2)
+    try:
+        time.sleep(0.3)
+        s.write(b"\x03")
+        time.sleep(1.5)
+        s.read(s.in_waiting or 1)
+        # Consume the "press any key" state before the raw-REPL handshake.
+        s.write(b"\r\n")
+        time.sleep(1.0)
+        s.reset_input_buffer()
+        s.write(b"\x01")
+        time.sleep(0.4)
+        s.read(s.in_waiting or 1)
+        s.write(setup + b"\x04")
+        time.sleep(3.0)
+        out = s.read(s.in_waiting or 1)
+        assert b"ADV True" in out, f"BLE setup failed: {out!r}"
+
+        char_uuid = "00005678-0000-1000-8000-00805f9b34fb"
+        results = {"gatt_reads": 0, "gatt_fails": 0, "http_ok": 0, "http_fails": 0}
+
+        async def run():
+            device = await bleak.BleakScanner.find_device_by_name(
+                "SiWx917-HWTEST", timeout=20.0
+            )
+            assert device is not None, "board not found over BLE"
+            async with bleak.BleakClient(device) as client:
+                deadline = time.monotonic() + 30.0
+
+                async def gatt_hammer():
+                    while time.monotonic() < deadline:
+                        try:
+                            await client.read_gatt_char(char_uuid)
+                            results["gatt_reads"] += 1
+                        except Exception:
+                            results["gatt_fails"] += 1
+
+                async def http_hammer():
+                    while time.monotonic() < deadline:
+                        try:
+                            response = await asyncio.to_thread(
+                                _session.get, url("/cp/version.json"), timeout=TIMEOUT
+                            )
+                            if response.status_code == 200:
+                                results["http_ok"] += 1
+                            else:
+                                results["http_fails"] += 1
+                        except Exception:
+                            results["http_fails"] += 1
+                        await asyncio.sleep(0.2)
+
+                await asyncio.gather(gatt_hammer(), http_hammer())
+
+        asyncio.run(run())
+
+        assert results["gatt_fails"] == 0, results
+        assert results["http_fails"] == 0, results
+        # Sanity that the hammer actually hammered.
+        assert results["gatt_reads"] > 50, results
+        assert results["http_ok"] > 20, results
+    finally:
+        # Soft reboot so the board returns to its own code.py.
+        s.write(b"\x02")
+        time.sleep(0.2)
+        s.write(b"\x04")
+        s.close()
