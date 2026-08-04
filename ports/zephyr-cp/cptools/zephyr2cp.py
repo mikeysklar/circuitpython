@@ -466,6 +466,7 @@ def zephyr_dts_to_cp_board(board_id, portdir, builddir, zephyrbuilddir, mpconfig
 
     config_bt_enabled = False
     config_bt_found = False
+    config_mdns_enabled = False
     config_present = True
     config = zephyrbuilddir / ".config"
     if not config.exists():
@@ -475,10 +476,12 @@ def zephyr_dts_to_cp_board(board_id, portdir, builddir, zephyrbuilddir, mpconfig
             if line.startswith("CONFIG_BT="):
                 config_bt_enabled = line.strip().endswith("=y")
                 config_bt_found = True
-                break
-            if line.startswith("# CONFIG_BT is not set"):
+            elif line.startswith("# CONFIG_BT is not set"):
                 config_bt_enabled = False
                 config_bt_found = True
+            elif line.startswith("CONFIG_MDNS_RESPONDER=y"):
+                config_mdns_enabled = True
+            if config_bt_found and config_mdns_enabled:
                 break
 
     runners = zephyrbuilddir / "runners.yaml"
@@ -992,6 +995,7 @@ MP_DEFINE_CONST_DICT(board_module_globals, board_module_globals_table);
             )
 
     board_info["_bleio"] = ble_hardware_present and config_bt_enabled
+    board_info["mdns"] = config_mdns_enabled
     board_info["source_files"] = [board_c]
     board_info["cflags"] = ("-I", board_dir)
     board_info["flash_count"] = len(flashes)

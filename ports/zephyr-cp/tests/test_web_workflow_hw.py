@@ -109,17 +109,69 @@ def test_version_json_ip_populated():
     assert payload["ip"] == BOARD_IP
 
 
-@pytest.mark.xfail(
-    reason="board_name/hostname are empty in version.json: this port has no "
-    "mDNS common-hal implementation (mikeysklar/circuitpython#37); "
-    "flips to XPASS when implemented",
-    strict=False,
-)
 def test_version_json_mdns_fields_populated():
-    """board_name and hostname come from the mDNS responder, unimplemented here."""
+    """board_name and hostname come from the mDNS responder (mikeysklar/circuitpython#37).
+
+    Fixed by common-hal/mdns/Server.c, built on Zephyr's CONFIG_MDNS_RESPONDER
+    + DNS-SD. Only checks what web_workflow.c reads directly (hostname,
+    instance_name) -- actual on-air mDNS resolution from another host is not
+    covered here, see test_mdns_hostname_resolves_over_network below.
+    """
     payload = requests.get(url("/cp/version.json"), timeout=TIMEOUT).json()
     assert payload["board_name"] != ""
     assert payload["hostname"] != ""
+
+
+def _mdns_query_a(hostname, timeout_s=3.0):
+    """Send one mDNS A query for `hostname` and return the responder's IP, or None.
+
+    Talks raw multicast DNS (RFC 6762) instead of shelling out to a
+    platform tool (`dns-sd`/`avahi-browse`/`dig`), so this runs the same way
+    in CI and locally.
+    """
+    import socket
+    import struct
+
+    labels = hostname.split(".") + ["local"]
+    qname = b"".join(bytes([len(label)]) + label.encode() for label in labels) + b"\x00"
+    # Header: id=0, flags=0, 1 question, 0/0/0 answer/authority/additional.
+    query = struct.pack(">HHHHHH", 0, 0, 1, 0, 0, 0)
+    query += qname + struct.pack(">HH", 1, 1)  # QTYPE=A, QCLASS=IN
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(timeout_s)
+    try:
+        sock.sendto(query, ("224.0.0.251", 5353))
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                data, (from_ip, _port) = sock.recvfrom(2048)
+            except OSError:
+                break
+            if from_ip == BOARD_IP and len(data) > 12:
+                return from_ip
+        return None
+    finally:
+        sock.close()
+
+
+@pytest.mark.xfail(
+    reason="On-air mDNS resolution wasn't reproducible during development: this "
+    "network's AP appears to block multicast between wireless clients (a "
+    "control browse for _services._dns-sd._udp turned up nothing from any "
+    "other device either, only the querying host's own entries). The "
+    "responder itself is confirmed correctly configured -- see "
+    "test_version_json_mdns_fields_populated and the Kconfig comment in "
+    "boards/siwx917_dk2605a.conf. Flips to XPASS on a network that allows it.",
+    strict=False,
+)
+def test_mdns_hostname_resolves_over_network():
+    """<hostname>.local should resolve to the board's IP via real mDNS."""
+    payload = requests.get(url("/cp/version.json"), timeout=TIMEOUT).json()
+    hostname = payload["hostname"]
+    assert hostname
+    resolved = _mdns_query_a(hostname)
+    assert resolved == BOARD_IP
 
 
 def test_fs_requires_auth():
