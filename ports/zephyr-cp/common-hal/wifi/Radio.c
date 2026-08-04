@@ -29,6 +29,8 @@
 #include <zephyr/net/wifi.h>
 #include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/net/dhcpv4.h>
+// dns_resolve_get_default() for radio.ipv4_dns.
+#include <zephyr/net/dns_resolve.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_DECLARE(cp_wifi);
@@ -479,7 +481,41 @@ wifi_radio_error_t common_hal_wifi_radio_connect(wifi_radio_obj_t *self, uint8_t
         // WPA2-PSK. Drivers that support a WPA2/WPA3 transition AP will
         // negotiate up from here; a WPA3-only network needs
         // WIFI_SECURITY_TYPE_SAE, which we cannot infer without a prior scan.
+        //
+        // Security type must match what the AP actually advertises; there is
+        // no single value that works everywhere on this driver:
+        //
+        //   WIFI_SECURITY_TYPE_PSK               -> SL_WIFI_WPA2
+        //   WIFI_SECURITY_TYPE_WPA_AUTO_PERSONAL -> SL_WIFI_WPA3_TRANSITION
+        //
+        // Measured on a SiWx917-DK2605A (Hermes, b74171b3): a WPA2-PSK AP that
+        // associates fine with SL_WIFI_WPA2 is REJECTED when asked for WPA3
+        // transition mode, and a WPA3-SAE AP is rejected when asked for WPA2.
+        // Both failures surface identically as "Authentication failure", which
+        // makes them easy to misread as a wrong passphrase.
+        //
+        // So look the network up in the most recent scan and use its authmode.
+        // Fall back to plain WPA2-PSK, which is still the common case, when
+        // the SSID was not seen (hidden network, or connect() called without a
+        // prior scan). Known limit: that fallback is silently wrong for a
+        // WPA3-only hidden AP.
         params.security = WIFI_SECURITY_TYPE_PSK;
+        struct wifi_scan_result *cached = wifi_cached_scan_lookup(ssid, ssid_len);
+        if (cached != NULL) {
+            switch (cached->security) {
+                case WIFI_SECURITY_TYPE_SAE:
+                case WIFI_SECURITY_TYPE_SAE_H2E:
+                case WIFI_SECURITY_TYPE_SAE_AUTO:
+                    params.security = WIFI_SECURITY_TYPE_WPA_AUTO_PERSONAL;
+                    break;
+                case WIFI_SECURITY_TYPE_WPA_PSK:
+                    params.security = WIFI_SECURITY_TYPE_WPA_PSK;
+                    break;
+                default:
+                    params.security = WIFI_SECURITY_TYPE_PSK;
+                    break;
+            }
+        }
     } else {
         params.security = WIFI_SECURITY_TYPE_NONE;
     }
@@ -683,11 +719,22 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_gateway_ap(wifi_radio_obj_t *self) {
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_subnet(wifi_radio_obj_t *self) {
-    // if (!esp_netif_is_netif_up(self->netif)) {
+    // Was a hardcoded `return mp_const_none`.
+    if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
+        return mp_const_none;
+    }
+    struct net_if_ipv4 *ipv4 = self->sta_netif->config.ip.ipv4;
+    if (ipv4 == NULL) {
+        return mp_const_none;
+    }
+    for (int i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
+        if (ipv4->unicast[i].ipv4.is_used &&
+            ipv4->unicast[i].ipv4.addr_state == NET_ADDR_PREFERRED) {
+            return common_hal_ipaddress_new_ipv4address(
+                ipv4->unicast[i].netmask.s_addr);
+        }
+    }
     return mp_const_none;
-    // }
-    // esp_netif_get_ip_info(self->netif, &self->ip_info);
-    // return common_hal_ipaddress_new_ipv4address(self->ip_info.netmask.addr);
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_subnet_ap(wifi_radio_obj_t *self) {
@@ -769,20 +816,26 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_address_ap(wifi_radio_obj_t *self) {
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_dns(wifi_radio_obj_t *self) {
-    // if (!esp_netif_is_netif_up(self->netif)) {
-    //     return mp_const_none;
-    // }
-
-    // esp_netif_get_dns_info(self->netif, ESP_NETIF_DNS_MAIN, &self->dns_info);
-
-    // if (self->dns_info.ip.type != ESP_IPADDR_TYPE_V4) {
-    //     return mp_const_none;
-    // }
-    // // dns_info is of type esp_netif_dns_info_t, which is just ever so slightly
-    // // different than esp_netif_ip_info_t used for
-    // // common_hal_wifi_radio_get_ipv4_address (includes both ipv4 and 6),
-    // // so some extra jumping is required to get to the actual address
-    // return common_hal_ipaddress_new_ipv4address(self->dns_info.ip.u_addr.ip4.addr);
+    // Was a hardcoded `return mp_const_none`. Zephyr keeps resolver state in
+    // the DNS resolve context rather than on the interface, so read it there.
+    #if defined(CONFIG_DNS_RESOLVER)
+    if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
+        return mp_const_none;
+    }
+    struct dns_resolve_context *ctx = dns_resolve_get_default();
+    if (ctx == NULL) {
+        return mp_const_none;
+    }
+    for (int i = 0; i < CONFIG_DNS_RESOLVER_MAX_SERVERS; i++) {
+        if (ctx->servers[i].dns_server.sa_family == AF_INET) {
+            struct sockaddr_in *addr =
+                (struct sockaddr_in *)&ctx->servers[i].dns_server;
+            if (addr->sin_addr.s_addr != 0) {
+                return common_hal_ipaddress_new_ipv4address(addr->sin_addr.s_addr);
+            }
+        }
+    }
+    #endif
     return mp_const_none;
 }
 
