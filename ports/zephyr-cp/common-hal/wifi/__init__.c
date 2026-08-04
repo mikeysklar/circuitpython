@@ -129,6 +129,14 @@ static void _event_handler(struct net_mgmt_event_callback *cb, uint64_t mgmt_eve
         case NET_EVENT_WIFI_AP_STA_DISCONNECTED:
             LOG_DBG("NET_EVENT_WIFI_AP_STA_DISCONNECTED");
             break;
+        case NET_EVENT_IPV4_ADDR_ADD:
+            // DHCP bound or a static address was configured. The address is
+            // read live from Zephyr by the ipv4_address getter, so nothing is
+            // stored here; the status bar just needs a refresh or it keeps
+            // showing "No IP" until something else happens to redraw it.
+            LOG_DBG("NET_EVENT_IPV4_ADDR_ADD");
+            schedule_background_on_cp_core(NULL);
+            break;
         default:
             LOG_DBG("unhandled net event %x", (unsigned int)mgmt_event);
             break;
