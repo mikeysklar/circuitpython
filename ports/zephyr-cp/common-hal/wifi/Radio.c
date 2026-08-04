@@ -777,13 +777,33 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_subnet_ap(wifi_radio_obj_t *self) {
 // }
 
 mp_obj_t common_hal_wifi_radio_get_addresses(wifi_radio_obj_t *self) {
-    // return common_hal_wifi_radio_get_addresses_netif(self, self->netif);
-    return mp_const_none;
+    // Was `return mp_const_none`, but the shared-bindings contract
+    // (shared-bindings/wifi/Radio.c: "addresses: Sequence[str] ... Empty
+    // sequence when not connected") requires a sequence, never None -- so
+    // this returned the wrong type in the connected case and the wrong
+    // *value* (None instead of ()) when disconnected. Same underlying
+    // address as wifi_radio_get_ipv4_address() above and
+    // common_hal_wifi_radio_get_ipv4_address() (both already fixed);
+    // formatted as a string here rather than an IPv4Address object, per the
+    // Sequence[str] contract other ports also follow.
+    uint32_t ipv4_address = wifi_radio_get_ipv4_address(self);
+    if (ipv4_address == 0) {
+        return mp_const_empty_tuple;
+    }
+    uint8_t *octets = (uint8_t *)&ipv4_address;
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d.%d.%d.%d", octets[0], octets[1], octets[2], octets[3]);
+    mp_obj_t args[] = { mp_obj_new_str(buf, strlen(buf)) };
+    return mp_obj_new_tuple(MP_ARRAY_SIZE(args), args);
 }
 
 mp_obj_t common_hal_wifi_radio_get_addresses_ap(wifi_radio_obj_t *self) {
-    // return common_hal_wifi_radio_get_addresses_netif(self, self->ap_netif);
-    return mp_const_none;
+    // AP mode is not implemented on this port at all (see
+    // common_hal_wifi_radio_start_ap, also stubbed), so unlike get_addresses
+    // above there is no real address to report yet. mp_const_none is still
+    // the wrong type for the Sequence[str] contract; correct that much
+    // without pretending AP mode works.
+    return mp_const_empty_tuple;
 }
 
 uint32_t wifi_radio_get_ipv4_address(wifi_radio_obj_t *self) {
