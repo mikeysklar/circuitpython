@@ -663,6 +663,11 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_gateway(wifi_radio_obj_t *self) {
     if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
         return mp_const_none;
     }
+    // struct net_if_ip's `ipv4` member only exists when CONFIG_NET_IPV4 is
+    // set (net/net_if.h) -- siwx917 always has it, but this file is also
+    // compiled for every other Wi-Fi board in the port's CI matrix, and not
+    // all of them turn IPv4 on. A board without it just has no IPv4 gateway.
+    #if defined(CONFIG_NET_IPV4)
     const struct net_if_config *cfg = net_if_get_config(self->sta_netif);
     if (cfg == NULL || cfg->ip.ipv4 == NULL) {
         return mp_const_none;
@@ -671,6 +676,9 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_gateway(wifi_radio_obj_t *self) {
         return mp_const_none;
     }
     return common_hal_ipaddress_new_ipv4address(cfg->ip.ipv4->gw.s_addr);
+    #else
+    return mp_const_none;
+    #endif
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_gateway_ap(wifi_radio_obj_t *self) {
