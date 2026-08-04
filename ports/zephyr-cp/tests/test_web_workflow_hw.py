@@ -96,17 +96,30 @@ def test_version_json_ok():
     assert payload["mcu_name"] == "siwg917m111mgtba"
 
 
+def test_version_json_ip_populated():
+    """ip should reflect the board's real DHCP-assigned address.
+
+    Was empty on real hardware (mikeysklar/circuitpython#34): the internal
+    wifi_radio_get_ipv4_address() used by web_workflow.c for this field was
+    a leftover ESP-IDF stub always returning 0, separate from
+    common_hal_wifi_radio_get_ipv4_address() (the Python-facing getter,
+    already fixed) which reads the same address correctly.
+    """
+    payload = requests.get(url("/cp/version.json"), timeout=TIMEOUT).json()
+    assert payload["ip"] == BOARD_IP
+
+
 @pytest.mark.xfail(
-    reason="board_name/hostname/ip are empty in version.json on real hardware "
-    "(mikeysklar/circuitpython#34); flips to XPASS when fixed",
+    reason="board_name/hostname are empty in version.json: this port has no "
+    "mDNS common-hal implementation (mikeysklar/circuitpython#37); "
+    "flips to XPASS when implemented",
     strict=False,
 )
-def test_version_json_runtime_fields_populated():
-    """board_name, hostname and ip should reflect the running board."""
+def test_version_json_mdns_fields_populated():
+    """board_name and hostname come from the mDNS responder, unimplemented here."""
     payload = requests.get(url("/cp/version.json"), timeout=TIMEOUT).json()
     assert payload["board_name"] != ""
     assert payload["hostname"] != ""
-    assert payload["ip"] == BOARD_IP
 
 
 def test_fs_requires_auth():
