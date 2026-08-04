@@ -5,6 +5,7 @@
 //
 // SPDX-License-Identifier: MIT
 
+#include <errno.h>
 #include <string.h>
 
 #include "py/runtime.h"
@@ -152,13 +153,13 @@ void common_hal_bleio_service_add_characteristic(bleio_service_obj_t *self, blei
 
     if (self->registered) {
         // Zephyr assigns handles at registration; the table cannot grow after.
-        mp_raise_RuntimeError(MP_ERROR_TEXT("Service already registered"));
+        raise_zephyr_error(-EALREADY);
     }
 
     size_t chr_index = self->characteristic_list->len;
     if (chr_index >= BLEIO_SERVICE_MAX_CHARACTERISTICS ||
         self->attr_count + 3 > BLEIO_SERVICE_MAX_ATTRS) {
-        mp_raise_RuntimeError(MP_ERROR_TEXT("Too many characteristics"));
+        raise_zephyr_error(-ENOSPC);
     }
 
     const struct bt_uuid *chr_uuid = bleio_uuid_as_bt_uuid(characteristic->uuid);

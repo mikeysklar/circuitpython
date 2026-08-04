@@ -81,7 +81,7 @@ void bleio_adapter_add_pending_service(bleio_service_obj_t *self) {
         }
     }
     if (pending_service_count >= BLEIO_ADAPTER_MAX_PENDING_SERVICES) {
-        mp_raise_RuntimeError(MP_ERROR_TEXT("Too many services"));
+        raise_zephyr_error(-ENOSPC);
     }
     pending_services[pending_service_count++] = self;
 }

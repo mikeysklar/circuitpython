@@ -5,6 +5,7 @@
 //
 // SPDX-License-Identifier: MIT
 
+#include <errno.h>
 #include <string.h>
 
 #include "py/runtime.h"
@@ -58,7 +59,7 @@ void common_hal_bleio_characteristic_add_descriptor(bleio_characteristic_obj_t *
 
 void common_hal_bleio_characteristic_construct(bleio_characteristic_obj_t *self, bleio_service_obj_t *service, uint16_t handle, bleio_uuid_obj_t *uuid, bleio_characteristic_properties_t props, bleio_attribute_security_mode_t read_perm, bleio_attribute_security_mode_t write_perm, mp_int_t max_length, bool fixed_length, mp_buffer_info_t *initial_value_bufinfo, const char *user_description) {
     if (max_length < 0) {
-        mp_raise_ValueError(MP_ERROR_TEXT("Invalid data_length"));
+        raise_zephyr_error(-EINVAL);
     }
     self->service = service;
     self->uuid = uuid;
