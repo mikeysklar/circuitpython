@@ -304,12 +304,15 @@ void port_heap_init(void) {
         // some SoCs they are actively dangerous to allocate from. The siwx91x
         // exposes two 1 KB regions that must not be used: memory@0 is reserved
         // for the network processor ("The first 1KB of SRAM is reserved for the
-        // NWP"), and memory-dma@24061c00 is a DMA buffer. Handing Python
-        // objects out of either lets hardware outside the CPU overwrite them,
-        // which shows up much later as an int that has become a function, a
-        // bytearray whose length is wrong, or a jump through a corrupted
-        // pointer. Note the old bound was `< 1024`, which let a region of
-        // exactly 1024 bytes through.
+        // NWP"), and memory-dma@24061c00 is a DMA buffer. tlsf_create_with_pool()
+        // does not refuse a region this small -- it writes its control block
+        // past the end of it regardless (measured: a 1 KB region here takes a
+        // 3.7 KB out-of-bounds write and still returns success), corrupting
+        // whatever memory follows before the first malloc() ever runs. That
+        // corruption is what shows up later as an int that has become a
+        // function, a bytearray whose length is wrong, or a jump through a
+        // corrupted pointer -- not a clean allocation failure. Note the old
+        // bound was `< 1024`, which let a region of exactly 1024 bytes through.
         if (size < MIN_HEAP_REGION_SIZE) {
             printk("Skipping region at %p: too small (%d bytes)\n", heap_bottom, size);
             continue;
@@ -330,15 +333,6 @@ void port_heap_init(void) {
         // If this crashes, then make sure you've enabled all of the Kconfig needed for the drivers.
         if (valid_pool_count == 0) {
             heap = tlsf_create_with_pool(heap_bottom, size, circuitpy_max_ram_size);
-            if (heap == NULL) {
-                // The region passed the size check above but is still too small
-                // to hold TLSF's control structure, so it cannot be the first
-                // pool. Skip it and try the next region instead of leaving
-                // `heap` NULL, which aborts on the first allocation.
-                printk("Region too small to host the heap control structure; skipping\n");
-                pools[i] = NULL;
-                continue;
-            }
             pools[i] = tlsf_get_pool(heap);
         } else {
             pools[i] = tlsf_add_pool(heap, heap_bottom + 1, size - sizeof(uint32_t));
