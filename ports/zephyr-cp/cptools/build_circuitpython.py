@@ -284,8 +284,9 @@ async def generate_web_workflow_static(output_path, static_files):
 def configure_ulab_module(mpconfigboard, circuitpython_flags, source_files, top):
     """Configure ulab module flags and sources if enabled in board config.
 
-    ulab is an opt-in module that costs roughly 100 KB of flash. When enabled,
-    it adds compiler flags and source files required for ulab support.
+    ulab is opt-in per board via CIRCUITPY_ULAB in circuitpython.toml. It adds
+    roughly 100 KB, so it is not enabled by default. The flags mirror
+    py/py.mk; check there if they need updating.
 
     Args:
         mpconfigboard: Board configuration dictionary
