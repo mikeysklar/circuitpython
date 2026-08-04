@@ -50,6 +50,15 @@ void common_hal_mcu_processor_get_uid(uint8_t raw_id[]) {
     // WiFi MAC zero-extended to 8 bytes. Match that: the wifi net_if link
     // address is set from the same store at driver init, before the radio is
     // enabled, so it is available whenever this can be called.
+    //
+    // CAVEAT: unlike a burned-in hardware serial, this value is whatever the
+    // WiFi MAC is currently set to, and Silicon Labs' own manufacturing tool
+    // (mfg917) can reprogram that MAC. Nothing on this silicon offers an
+    // immutable per-device ID: the RM documents no die/unique ID register,
+    // the vendor SDK has no such concept, and the one real per-device secret
+    // (a PUF-derived key, RM ch. 46/48) is deliberately non-readable as
+    // plaintext. Do not rely on cpu.uid being tamper-proof on this port --
+    // e.g. for license binding or provisioning that assumes a fixed serial.
     if (len == 0) {
         struct net_if *iface = net_if_get_first_wifi();
         struct net_linkaddr *addr = (iface != NULL) ? net_if_get_link_addr(iface) : NULL;
