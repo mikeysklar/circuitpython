@@ -278,3 +278,47 @@ def test_http_survives_concurrent_ble_gatt():
         time.sleep(0.2)
         s.write(b"\x04")
         s.close()
+
+
+@pytest.mark.skipif(SERIAL_PORT is None, reason="CP_HW_SERIAL_PORT not set")
+def test_wifi_radio_addresses():
+    """wifi.radio.addresses is a Sequence[str], never None.
+
+    common_hal_wifi_radio_get_addresses() returned mp_const_none, wrong type
+    for the shared-bindings contract ("addresses: Sequence[str] ... Empty
+    sequence when not connected"). Same address as
+    wifi_radio_get_ipv4_address(), formatted as a string tuple instead of
+    reusing that raw getter directly.
+    """
+    serial = pytest.importorskip("serial")
+    s = serial.Serial(SERIAL_PORT, 115200, timeout=2)
+    try:
+        time.sleep(0.3)
+        s.write(b"\x03")
+        time.sleep(1.5)
+        s.read(s.in_waiting or 1)
+        s.write(b"\r\n")
+        time.sleep(1.0)
+        s.reset_input_buffer()
+        s.write(b"\x01")
+        time.sleep(0.4)
+        s.read(s.in_waiting or 1)
+        s.write(
+            b"import wifi\n"
+            b"a = wifi.radio.addresses\n"
+            b"print('TYPE', type(a).__name__)\n"
+            b"print('LEN', len(a))\n"
+            b"print('VAL', a[0] if a else None)\n"
+            b"\x04"
+        )
+        time.sleep(2.0)
+        out = s.read(s.in_waiting or 1).decode(errors="replace")
+    finally:
+        s.write(b"\x02")
+        time.sleep(0.2)
+        s.write(b"\x04")
+        s.close()
+
+    assert "TYPE tuple" in out, out
+    assert "LEN 1" in out, out
+    assert f"VAL {BOARD_IP}" in out, out
