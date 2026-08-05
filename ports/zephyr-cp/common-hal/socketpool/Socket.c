@@ -223,10 +223,19 @@ int socketpool_socket_accept(socketpool_socket_obj_t *self, mp_obj_t *peer_out, 
                 .tv_sec = 0,
                 .tv_usec = 1000,
             };
-            zsock_setsockopt(self->num, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            int _diag_sso = zsock_setsockopt(self->num, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            if (_diag_sso < 0) {
+                printk("DIAG accept: setsockopt(SO_RCVTIMEO) FAILED -> %d errno=%d\n", _diag_sso, errno);
+            }
         }
         #endif
+        uint64_t _diag_before = supervisor_ticks_ms64();
         newsoc = zsock_accept(self->num, (struct sockaddr *)&peer_addr, &socklen);
+        uint64_t _diag_elapsed = supervisor_ticks_ms64() - _diag_before;
+        if (newsoc >= 0 || _diag_elapsed > 5) {
+            printk("DIAG accept: zsock_accept -> %d errno=%d elapsed_ms=%llu\n",
+                newsoc, errno, (unsigned long long)_diag_elapsed);
+        }
         // In non-blocking mode, fail instead of timing out
         if (newsoc == -1 && (self->timeout_ms == 0 || mp_hal_is_interrupted())) {
             return -MP_EAGAIN;
