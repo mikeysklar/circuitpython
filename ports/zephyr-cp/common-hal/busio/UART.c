@@ -30,11 +30,12 @@ static void serial_cb(const struct device *dev, void *user_data) {
 
     uint8_t c;
 
-    if (!uart_irq_update(dev)) {
-        return;
-    }
+    // uart_irq_update() returns void: it caches/acks the interrupt status and
+    // has no success value to test. Readiness is the separate query below --
+    // the same order Zephyr's own echo_bot sample uses.
+    uart_irq_update(dev);
 
-    if (!uart_irq_rx_ready(dev)) {
+    if (uart_irq_rx_ready(dev) <= 0) {
         return;
     }
 

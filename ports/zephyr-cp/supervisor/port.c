@@ -17,6 +17,7 @@
 
 #include <zephyr/autoconf.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/barrier.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
 
@@ -42,6 +43,10 @@
 
 static tlsf_t heap;
 static size_t tlsf_heap_used = 0;
+
+// Smallest memory region worth adding to the Python heap. Also keeps tiny
+// special-purpose regions (NWP-reserved memory, DMA buffers) out of it.
+#define MIN_HEAP_REGION_SIZE (8 * 1024)
 
 // Auto generated in pins.c
 extern const struct device *const rams[];
@@ -257,6 +262,44 @@ void port_idle_until_interrupt(void) {
 
 // Zephyr doesn't maintain one multi-heap. So, make our own using TLSF.
 void port_heap_init(void) {
+    #if defined(CONFIG_SOC_FAMILY_SILABS_SIWX91X)
+    // The SiWx917 has a 16 KB data cache dedicated to PSRAM (family RM rev 1.2
+    // section 5.4.5) sitting on the QSPI2 path, at 0x44040000. The bootloader
+    // leaves it enabled and half-configured, and nothing in this build can
+    // maintain it:
+    //
+    //   - WiseConnect's own PSRAM init clears the HPROT allocate signal right
+    //     after enabling the cache. That step never runs here, because
+    //     SL_SI91X_D_CACHE_ENABLE is never defined and the macros it needs
+    //     (DCACHE_CTRL_AND_STATUS, HPORT_ALLOCATE_SIGNAL) do not exist in the
+    //     vendored HAL at all.
+    //   - Zephyr cannot maintain it either: cache_siwx91x.c asserts the SoC has
+    //     no data cache, CPU_HAS_DCACHE is never selected, and sys_cache_data_*
+    //     return -ENOTSUP.
+    //
+    // The result is an unmaintained write-allocate cache in front of memory a
+    // second bus master (the NWP) also writes, which corrupts Python objects
+    // under allocation churn: ints that become functions, bytearrays with wrong
+    // lengths, garbled qstrs, and MPU faults through pointers read from PSRAM.
+    // Disable it here, before any TLSF pool exists.
+    //
+    // Only bit 0 of CTRL clears; bit 1 is sticky, and MAINT_STATUS settles at
+    // 0x100 rather than 0. Do not spin waiting for zero -- the vendor's own
+    // disable path does exactly that and would hang on this silicon.
+    //
+    // This is a workaround, not a fix. The fix is either a real cache driver for
+    // the peripheral or clearing HPROT allocate the way the vendor intended.
+    volatile uint32_t *dcache_ctrl = (volatile uint32_t *)(0x44040000 + 0x010);
+    volatile uint32_t *dcache_maint = (volatile uint32_t *)(0x44040000 + 0x028);
+    uint32_t dcache_ctrl_before = *dcache_ctrl;
+    uint32_t dcache_maint_before = *dcache_maint;
+    *dcache_ctrl &= ~1u;
+    barrier_dsync_fence_full();
+    barrier_isync_fence_full();
+    printk("PSRAM dcache disabled: CTRL %08x -> %08x, MAINT %08x -> %08x\n",
+        dcache_ctrl_before, *dcache_ctrl, dcache_maint_before, *dcache_maint);
+    #endif
+
     // Do a test malloc to determine if Zephyr has an outer heap that may
     // overlap with a memory region we've identified in ram_bounds. We'll
     // corrupt each other if we both use it.
@@ -266,7 +309,35 @@ void port_heap_init(void) {
     zephyr_malloc_active = test_malloc != NULL;
     #endif
 
+    // TLSF's control structure lives in the first pool, so that pool must be
+    // large enough to hold it. Pick the largest region for it rather than
+    // whichever happens to come first: a board whose first region is tiny (the
+    // SiWx917 has two 1 KB regions ahead of 8 MB of PSRAM) otherwise builds its
+    // heap in a space too small to use, and the first real allocation aborts.
+    //
+    // On the SiWx917 this reorder puts the control block in PSRAM, which is
+    // only safe because the dcache disable above already ran with no
+    // allocation in between (flagged by Hermes, #the-forge, 2026-08-04). This
+    // block must keep running after that one -- moving it earlier reintroduces
+    // the write-allocate corruption the disable exists to prevent.
+    size_t largest_index = 0;
+    size_t largest_size = 0;
     for (size_t i = 0; i < CIRCUITPY_RAM_DEVICE_COUNT; i++) {
+        size_t size = (ram_bounds[2 * i + 1] - ram_bounds[2 * i]) * sizeof(uint32_t);
+        if (size > largest_size) {
+            largest_size = size;
+            largest_index = i;
+        }
+    }
+
+    for (size_t n = 0; n < CIRCUITPY_RAM_DEVICE_COUNT; n++) {
+        // Visit the largest region first, then the rest in their original order.
+        size_t i;
+        if (n == 0) {
+            i = largest_index;
+        } else {
+            i = (n - 1 < largest_index) ? n - 1 : n;
+        }
         uint32_t *heap_bottom = ram_bounds[2 * i];
         uint32_t *heap_top = ram_bounds[2 * i + 1];
         size_t size = (heap_top - heap_bottom) * sizeof(uint32_t);
@@ -274,8 +345,21 @@ void port_heap_init(void) {
         // build time. (The ram_bounds values are sometimes determined by the
         // linker.) So, we need to guard against regions that aren't actually
         // free.
-        if (size < 1024) {
-            printk("Skipping region because the linker filled it up.\n");
+        // Regions this small are never usefully part of the Python heap, and on
+        // some SoCs they are actively dangerous to allocate from. The siwx91x
+        // exposes two 1 KB regions that must not be used: memory@0 is reserved
+        // for the network processor ("The first 1KB of SRAM is reserved for the
+        // NWP"), and memory-dma@24061c00 is a DMA buffer. tlsf_create_with_pool()
+        // does not refuse a region this small -- it writes its control block
+        // past the end of it regardless (measured: a 1 KB region here takes a
+        // 3.7 KB out-of-bounds write and still returns success), corrupting
+        // whatever memory follows before the first malloc() ever runs. That
+        // corruption is what shows up later as an int that has become a
+        // function, a bytearray whose length is wrong, or a jump through a
+        // corrupted pointer -- not a clean allocation failure. Note the old
+        // bound was `< 1024`, which let a region of exactly 1024 bytes through.
+        if (size < MIN_HEAP_REGION_SIZE) {
+            printk("Skipping region at %p: too small (%d bytes)\n", heap_bottom, size);
             continue;
         }
         #ifdef CONFIG_COMMON_LIBC_MALLOC

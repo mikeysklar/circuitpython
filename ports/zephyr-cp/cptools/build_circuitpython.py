@@ -281,6 +281,33 @@ async def generate_web_workflow_static(output_path, static_files):
     )
 
 
+def configure_ulab_module(mpconfigboard, circuitpython_flags, source_files, top):
+    """Configure ulab module flags and sources if enabled in board config.
+
+    ulab is opt-in per board via CIRCUITPY_ULAB in circuitpython.toml. It adds
+    roughly 100 KB, so it is not enabled by default. The flags mirror
+    py/py.mk; check there if they need updating.
+
+    Args:
+        mpconfigboard: Board configuration dictionary
+        circuitpython_flags: List of compiler flags to modify in-place
+        source_files: List of source files to modify in-place
+        top: Path to the CircuitPython source root
+    """
+    ulab_enabled = bool(mpconfigboard.get("CIRCUITPY_ULAB", False))
+    circuitpython_flags.append(f"-DCIRCUITPY_ULAB={1 if ulab_enabled else 0}")
+    if ulab_enabled:
+        circuitpython_flags.extend(
+            (
+                "-DMODULE_ULAB_ENABLED=1",
+                "-DULAB_HAS_USER_MODULE=0",
+                "-iquote",
+                str(top / "extmod" / "ulab" / "code"),
+            )
+        )
+        source_files.extend(sorted((top / "extmod" / "ulab" / "code").rglob("*.c")))
+
+
 def determine_enabled_modules(board_info, portdir, srcdir):
     """Determine which CircuitPython modules should be enabled based on board capabilities.
 
@@ -600,6 +627,7 @@ async def build_circuitpython():
         circuitpython_flags.append(f"-DCIRCUITPY_{mpflag.upper()}={1 if enabled else 0}")
 
     source_files = supervisor_source + hal_source + ["extmod/vfs.c"]
+    configure_ulab_module(mpconfigboard, circuitpython_flags, source_files, top)
     assembly_files = []
     for file in top.glob("py/*.c"):
         source_files.append(file)

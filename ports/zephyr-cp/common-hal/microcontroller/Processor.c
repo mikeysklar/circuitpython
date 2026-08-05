@@ -14,6 +14,10 @@
 #include <sys/types.h>
 #include <zephyr/drivers/hwinfo.h>
 
+#if defined(CONFIG_SOC_FAMILY_SILABS_SIWX91X)
+#include <zephyr/net/net_if.h>
+#endif
+
 
 float common_hal_mcu_processor_get_temperature(void) {
     return 0.0;
@@ -35,11 +39,38 @@ float common_hal_mcu_processor_get_voltage(void) {
 void common_hal_mcu_processor_get_uid(uint8_t raw_id[]) {
     ssize_t len = hwinfo_get_device_id(raw_id, COMMON_HAL_MCU_PROCESSOR_UID_LENGTH);
     if (len < 0) {
-        printk("UID retrieval failed: %d\n", len);
         len = 0;
     }
+    #if defined(CONFIG_SOC_FAMILY_SILABS_SIWX91X)
+    // SiWx91x has no hwinfo driver, and none is worth writing: the efuse
+    // identity region (0x020..0x02F of the array at TA_EFUSE_IO_BASE_ADDR) is
+    // unprogrammed on this silicon -- verified on two dies, 2026-08-04. The
+    // MACs live only in the flash-resident config space ("efusecopy",
+    // 0x04000560), and Simplicity Commander's "Unique ID" is defined as the
+    // WiFi MAC zero-extended to 8 bytes. Match that: the wifi net_if link
+    // address is set from the same store at driver init, before the radio is
+    // enabled, so it is available whenever this can be called.
+    //
+    // CAVEAT: unlike a burned-in hardware serial, this value is whatever the
+    // WiFi MAC is currently set to, and Silicon Labs' own manufacturing tool
+    // (mfg917) can reprogram that MAC. Nothing on this silicon offers an
+    // immutable per-device ID: the RM documents no die/unique ID register,
+    // the vendor SDK has no such concept, and the one real per-device secret
+    // (a PUF-derived key, RM ch. 46/48) is deliberately non-readable as
+    // plaintext. Do not rely on cpu.uid being tamper-proof on this port --
+    // e.g. for license binding or provisioning that assumes a fixed serial.
+    if (len == 0) {
+        struct net_if *iface = net_if_get_first_wifi();
+        struct net_linkaddr *addr = (iface != NULL) ? net_if_get_link_addr(iface) : NULL;
+        if (addr != NULL && addr->len == 6 && COMMON_HAL_MCU_PROCESSOR_UID_LENGTH >= 8) {
+            raw_id[0] = 0;
+            raw_id[1] = 0;
+            memcpy(&raw_id[2], addr->addr, 6);
+            len = 8;
+        }
+    }
+    #endif
     if (len < COMMON_HAL_MCU_PROCESSOR_UID_LENGTH) {
-        printk("UID shorter %d than defined length %d\n", len, COMMON_HAL_MCU_PROCESSOR_UID_LENGTH);
         memset(raw_id + len, 0, COMMON_HAL_MCU_PROCESSOR_UID_LENGTH - len);
     }
 }

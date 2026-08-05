@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <zephyr/sys/atomic.h>
+
 #include <zephyr/bluetooth/addr.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
@@ -21,6 +23,7 @@
 #include "shared-bindings/_bleio/__init__.h"
 #include "shared-bindings/_bleio/Adapter.h"
 #include "shared-bindings/_bleio/Address.h"
+#include "shared-bindings/_bleio/Service.h"
 #include "shared-module/_bleio/Address.h"
 #include "shared-module/_bleio/ScanResults.h"
 #include "supervisor/shared/tick.h"
@@ -39,6 +42,64 @@ static struct bt_data adv_data[BLEIO_ADV_MAX_FIELDS];
 static struct bt_data scan_resp_data[BLEIO_ADV_MAX_FIELDS];
 static uint8_t adv_data_storage[BLEIO_ADV_MAX_DATA_LEN];
 static uint8_t scan_resp_storage[BLEIO_ADV_MAX_DATA_LEN];
+
+// Advertising state retained so that connectable advertising can be resumed
+// after a disconnect.  The controller stops the advertiser when a connection is
+// established and Zephyr has no restart path of its own, so without this the
+// peripheral accepts exactly one connection per boot and is then invisible
+// until reset.  The payload arrays above are already file-scope; only the
+// parameters and the field counts were locals of start_advertising().
+static struct bt_le_adv_param retained_adv_params;
+static size_t retained_adv_count;
+static size_t retained_scan_resp_count;
+
+// Whether advertising *should* be running.  Distinct from ble_advertising,
+// which tracks whether it *is*.  They differ for exactly as long as a
+// connection is up.
+static bool ble_advertising_intent = false;
+
+// Set from the disconnected callback, consumed by the background task.  The
+// callback runs in Zephyr's BT thread, where bt_le_adv_start() must not be
+// called: it blocks waiting for an HCI command completion that the same thread
+// is responsible for delivering.  Zephyr's own peripheral samples set a flag in
+// the callback and restart from their main loop for this reason.
+static atomic_t ble_advertising_resume_pending = ATOMIC_INIT(0);
+
+// Services queued by Service.c's constructor, registered with Zephyr when
+// advertising starts. Held as raw C pointers, not an mp_obj_list_t, so a
+// Service object could otherwise be GC-collected while these still point into
+// its embedded attr table -- bleio_adapter_gc_collect() below roots this array
+// the same way it roots bleio_connections.
+#define BLEIO_ADAPTER_MAX_PENDING_SERVICES 8
+static bleio_service_obj_t *pending_services[BLEIO_ADAPTER_MAX_PENDING_SERVICES];
+static size_t pending_service_count;
+
+void bleio_adapter_add_pending_service(bleio_service_obj_t *self) {
+    for (size_t i = 0; i < pending_service_count; i++) {
+        if (pending_services[i] == self) {
+            return;
+        }
+    }
+    if (pending_service_count >= BLEIO_ADAPTER_MAX_PENDING_SERVICES) {
+        raise_zephyr_error(-ENOSPC);
+    }
+    pending_services[pending_service_count++] = self;
+}
+
+static void bleio_adapter_register_pending_services(void) {
+    for (size_t i = 0; i < pending_service_count; i++) {
+        bleio_service_register_if_needed(pending_services[i]);
+    }
+}
+
+bool bleio_adapter_any_connected(void) {
+    for (size_t i = 0; i < BLEIO_TOTAL_CONNECTION_COUNT; i++) {
+        if (bleio_connections[i].conn != NULL) {
+            return true;
+        }
+    }
+    return false;
+}
 
 static uint8_t bleio_address_type_from_zephyr(const bt_addr_le_t *addr) {
     if (addr == NULL) {
@@ -141,12 +202,32 @@ static void bleio_connection_release(bleio_connection_internal_t *connection, ui
 
 static void bleio_connected_cb(struct bt_conn *conn, uint8_t err) {
     if (err != 0) {
+        printk("bleio: connection setup failed, HCI err 0x%02x\n", err);
+        return;
+    }
+    printk("bleio: connected %p\n", conn);
+
+    if (bleio_connection_track(conn) == NULL) {
+        printk("bleio: no free connection slot, rejecting %p\n", conn);
+        bt_conn_disconnect(conn, BT_HCI_ERR_CONN_LIMIT_EXCEEDED);
         return;
     }
 
-    if (bleio_connection_track(conn) == NULL) {
-        bt_conn_disconnect(conn, BT_HCI_ERR_CONN_LIMIT_EXCEEDED);
-        return;
+    // Log the NEGOTIATED link parameters. The disconnect reason alone tells
+    // you a link died; these tell you whether it was ever survivable. With
+    // this port's Zephyr defaults (BT_PERIPHERAL_PREF_TIMEOUT=42 => 420ms
+    // supervision timeout) a single bad stretch on a 2.4 GHz band shared with
+    // Wi-Fi can kill the link -- see BT_PERIPHERAL_PREF_TIMEOUT in
+    // boards/siwx917_dk2605a.conf. Units are raw HCI: interval 1.25ms,
+    // timeout 10ms.
+    struct bt_conn_info cinfo;
+    if (bt_conn_get_info(conn, &cinfo) == 0 && cinfo.type == BT_CONN_TYPE_LE) {
+        printk("bleio: connected %p interval %u (%u.%02u ms) latency %u timeout %u (%u ms)\n",
+            conn,
+            cinfo.le.interval,
+            (cinfo.le.interval * 125u) / 100u, ((cinfo.le.interval * 125u) % 100u),
+            cinfo.le.latency,
+            cinfo.le.timeout, cinfo.le.timeout * 10u);
     }
 
     // When connectable advertising results in a connection, the controller
@@ -158,14 +239,58 @@ static void bleio_connected_cb(struct bt_conn *conn, uint8_t err) {
     common_hal_bleio_adapter_obj.connection_objs = NULL;
 }
 
+// Fires when link parameters change AFTER connection. Zephyr's
+// BT_GAP_AUTO_UPDATE_CONN_PARAMS sends our peripheral preference ~5s in
+// (BT_CONN_PARAM_UPDATE_TIMEOUT), so the parameters at connect time are
+// frequently NOT the ones in force when a drop happens -- logging only at
+// connect reports a link state that may no longer exist.
+static void bleio_le_param_updated_cb(struct bt_conn *conn, uint16_t interval,
+    uint16_t latency, uint16_t timeout) {
+    printk("bleio: param-updated %p interval %u (%u.%02u ms) latency %u timeout %u (%u ms)\n",
+        conn, interval,
+        (interval * 125u) / 100u, ((interval * 125u) % 100u),
+        latency, timeout, timeout * 10u);
+}
+
 static void bleio_disconnected_cb(struct bt_conn *conn, uint8_t reason) {
-    printk("disconnected %p\n", conn);
+    printk("disconnected %p reason 0x%02x\n", conn, reason);
     bleio_connection_release(bleio_connection_find_by_conn(conn), reason);
+
+    // Only flag the work; see ble_advertising_resume_pending above for why the
+    // restart cannot happen here.
+    if (ble_advertising_intent && !ble_advertising) {
+        atomic_set(&ble_advertising_resume_pending, 1);
+    }
+}
+
+// Called from port_background_task(), i.e. the CircuitPython thread.
+void bleio_background(void) {
+    if (!atomic_cas(&ble_advertising_resume_pending, 1, 0)) {
+        return;
+    }
+
+    if (!ble_advertising_intent || ble_advertising || !ble_adapter_enabled) {
+        return;
+    }
+
+    int err = bt_le_adv_start(&retained_adv_params,
+        adv_data,
+        retained_adv_count,
+        retained_scan_resp_count > 0 ? scan_resp_data : NULL,
+        retained_scan_resp_count);
+    if (err) {
+        // Nothing to raise into: no Python frame is on the stack here.
+        printk("_bleio: failed to resume advertising after disconnect (%d)\n", err);
+        return;
+    }
+
+    ble_advertising = true;
 }
 
 BT_CONN_CB_DEFINE(bleio_connection_callbacks) = {
     .connected = bleio_connected_cb,
     .disconnected = bleio_disconnected_cb,
+    .le_param_updated = bleio_le_param_updated_cb,
 };
 
 static void scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf_simple *buf) {
@@ -302,13 +427,17 @@ mp_int_t common_hal_bleio_adapter_get_tx_power(bleio_adapter_obj_t *self) {
     return power;
 }
 
-void common_hal_bleio_adapter_set_tx_power(bleio_adapter_obj_t *self, mp_int_t tx_power) {
+// Returns a Zephyr error code rather than raising, so callers can treat setting
+// Tx power as best-effort. BT_HCI_OP_VS_WRITE_TX_POWER_LEVEL is a Zephyr
+// vendor-specific command that not every controller implements; the SiWx91x
+// answers "Unknown HCI Command" (status 0x01) and the call comes back -EIO.
+static int _try_set_tx_power(mp_int_t tx_power) {
     struct bt_hci_cp_vs_write_tx_power_level *cp;
     struct net_buf *buf, *rsp = NULL;
 
     buf = bt_hci_cmd_alloc(K_MSEC(3000));
     if (!buf) {
-        mp_raise_msg(&mp_type_MemoryError, NULL);
+        return -ENOMEM;
     }
     cp = net_buf_add(buf, sizeof(*cp));
     cp->handle_type = BT_HCI_VS_LL_HANDLE_TYPE_ADV;
@@ -317,10 +446,21 @@ void common_hal_bleio_adapter_set_tx_power(bleio_adapter_obj_t *self, mp_int_t t
 
     int err = bt_hci_cmd_send_sync(BT_HCI_OP_VS_WRITE_TX_POWER_LEVEL, buf, &rsp);
     if (err) {
-        raise_zephyr_error(err);
+        return err;
     }
 
     net_buf_unref(rsp);
+    return 0;
+}
+
+void common_hal_bleio_adapter_set_tx_power(bleio_adapter_obj_t *self, mp_int_t tx_power) {
+    int err = _try_set_tx_power(tx_power);
+    if (err) {
+        if (err == -ENOMEM) {
+            mp_raise_msg(&mp_type_MemoryError, NULL);
+        }
+        raise_zephyr_error(err);
+    }
 }
 
 bleio_address_obj_t *common_hal_bleio_adapter_get_address(bleio_adapter_obj_t *self) {
@@ -375,6 +515,11 @@ void common_hal_bleio_adapter_start_advertising(bleio_adapter_obj_t *self,
         raise_zephyr_error(-EALREADY);
     }
 
+    // Register any GATT services built up since the last (re)start. Deferred
+    // to here, rather than done eagerly in Service.c, so a service with
+    // several add_characteristic() calls registers once, fully formed.
+    bleio_adapter_register_pending_services();
+
     bt_addr_le_t id_addrs[CONFIG_BT_ID_MAX];
     size_t id_count = CONFIG_BT_ID_MAX;
     bt_id_get(id_addrs, &id_count);
@@ -428,7 +573,15 @@ void common_hal_bleio_adapter_start_advertising(bleio_adapter_obj_t *self,
             NULL);
     }
 
-    common_hal_bleio_adapter_set_tx_power(self, tx_power);
+    // Best-effort: a controller that does not implement Zephyr's vendor-specific
+    // Tx power command must still be able to advertise. Previously a failure
+    // here aborted start_advertising() entirely, which made advertising
+    // impossible on such controllers (e.g. the SiWx91x).
+    int tx_power_err = _try_set_tx_power(tx_power);
+    if (tx_power_err) {
+        printk("_bleio: controller rejected Tx power %d (%d); advertising anyway\n",
+            (int)tx_power, tx_power_err);
+    }
 
     raise_zephyr_error(bt_le_adv_start(&adv_params,
         adv_data,
@@ -437,10 +590,27 @@ void common_hal_bleio_adapter_start_advertising(bleio_adapter_obj_t *self,
         scan_resp_count));
 
     ble_advertising = true;
+
+    // Retain everything the resume path needs.  Only connectable advertising is
+    // resumed: the controller does not stop a non-connectable advertiser on
+    // connect, so there is nothing to restart.
+    retained_adv_params = adv_params;
+    retained_adv_count = adv_count;
+    retained_scan_resp_count = scan_resp_count;
+    ble_advertising_intent = connectable;
 }
 
 void common_hal_bleio_adapter_stop_advertising(bleio_adapter_obj_t *self) {
     (void)self;
+
+    // Clear the intent *before* the early return.  A stop issued while a
+    // connection is up finds ble_advertising already false (the controller
+    // stopped the advertiser on connect), so returning early here would leave
+    // the intent set and the next disconnect would silently re-advertise
+    // something the caller had explicitly stopped.
+    ble_advertising_intent = false;
+    atomic_set(&ble_advertising_resume_pending, 0);
+
     if (!ble_advertising) {
         return;
     }
@@ -633,6 +803,11 @@ bool common_hal_bleio_adapter_is_bonded_to_central(bleio_adapter_obj_t *self) {
 void bleio_adapter_gc_collect(bleio_adapter_obj_t *adapter) {
     gc_collect_root((void **)adapter, sizeof(bleio_adapter_obj_t) / sizeof(size_t));
     gc_collect_root((void **)bleio_connections, sizeof(bleio_connections) / sizeof(size_t));
+    // pending_services holds raw pointers into Service objects that Zephyr's
+    // attribute table also points into once registered; it must be rooted
+    // like bleio_connections above or a Service with no other Python
+    // reference could be collected while still registered.
+    gc_collect_root((void **)pending_services, sizeof(pending_services) / sizeof(size_t));
 }
 
 void bleio_adapter_reset(bleio_adapter_obj_t *adapter) {
@@ -641,6 +816,9 @@ void bleio_adapter_reset(bleio_adapter_obj_t *adapter) {
     }
 
     common_hal_bleio_adapter_stop_scan(adapter);
+    // Also clears ble_advertising_intent and any pending resume, so a VM reset
+    // cannot leave advertising restarting itself on behalf of code that is no
+    // longer running.
     common_hal_bleio_adapter_stop_advertising(adapter);
 
     for (size_t i = 0; i < BLEIO_TOTAL_CONNECTION_COUNT; i++) {
@@ -656,6 +834,16 @@ void bleio_adapter_reset(bleio_adapter_obj_t *adapter) {
         }
         bleio_connection_clear(connection);
     }
+
+    // A VM reset collects every Python object, including any Service whose
+    // attrs[] Zephyr's GATT DB still points into. Unregister first so the
+    // stack drops those pointers before the objects become garbage; simply
+    // forgetting the queue here would leave the DB referencing freed memory.
+    for (size_t i = 0; i < pending_service_count; i++) {
+        common_hal_bleio_service_deinit(pending_services[i]);
+    }
+    pending_service_count = 0;
+    memset(pending_services, 0, sizeof(pending_services));
 
     adapter->scan_results = NULL;
     adapter->connection_objs = NULL;

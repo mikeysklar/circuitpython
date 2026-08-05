@@ -466,6 +466,7 @@ def zephyr_dts_to_cp_board(board_id, portdir, builddir, zephyrbuilddir, mpconfig
 
     config_bt_enabled = False
     config_bt_found = False
+    config_mdns_enabled = False
     config_present = True
     config = zephyrbuilddir / ".config"
     if not config.exists():
@@ -475,10 +476,12 @@ def zephyr_dts_to_cp_board(board_id, portdir, builddir, zephyrbuilddir, mpconfig
             if line.startswith("CONFIG_BT="):
                 config_bt_enabled = line.strip().endswith("=y")
                 config_bt_found = True
-                break
-            if line.startswith("# CONFIG_BT is not set"):
+            elif line.startswith("# CONFIG_BT is not set"):
                 config_bt_enabled = False
                 config_bt_found = True
+            elif line.startswith("CONFIG_MDNS_RESPONDER=y"):
+                config_mdns_enabled = True
+            if config_bt_found and config_mdns_enabled:
                 break
 
     runners = zephyrbuilddir / "runners.yaml"
@@ -494,7 +497,16 @@ def zephyr_dts_to_cp_board(board_id, portdir, builddir, zephyrbuilddir, mpconfig
     else:
         board_yaml = board_yaml["board"]
     board_info["vendor_id"] = board_yaml["vendor"]
-    vendor_index = zephyr_board_dir.parent / "index.rst"
+    # The vendor directory is the direct child of boards/. Some vendors nest
+    # boards a level deeper in category directories (boards/silabs/dev_kits/
+    # <board>), where the intermediate index.rst heading is a product-line
+    # grouping ("Dev Kits and Thunderboards"), not the vendor - and that
+    # heading would end up prefixed onto the board's display name. Walk up
+    # to the real vendor directory before reading its index.rst.
+    vendor_dir = zephyr_board_dir.parent
+    while vendor_dir.parent.name != "boards" and vendor_dir.parent != vendor_dir:
+        vendor_dir = vendor_dir.parent
+    vendor_index = vendor_dir / "index.rst"
     if vendor_index.exists():
         vendor_index = vendor_index.read_text()
         vendor_index = vendor_index.split("\n")
@@ -677,7 +689,10 @@ def zephyr_dts_to_cp_board(board_id, portdir, builddir, zephyrbuilddir, mpconfig
 
                 if (ioport, num) not in board_names:
                     board_names[(ioport, num)] = []
-                board_names[(ioport, num)].append(props["label"].to_string())
+                # `label` is optional and deprecated on gpio-keys; modern boards
+                # identify keys with `zephyr,code` instead.
+                if "label" in props:
+                    board_names[(ioport, num)].append(props["label"].to_string())
                 if key in node2alias:
                     if "sw0" in node2alias[key]:
                         board_names[(ioport, num)].append("BUTTON")
@@ -980,6 +995,7 @@ MP_DEFINE_CONST_DICT(board_module_globals, board_module_globals_table);
             )
 
     board_info["_bleio"] = ble_hardware_present and config_bt_enabled
+    board_info["mdns"] = config_mdns_enabled
     board_info["source_files"] = [board_c]
     board_info["cflags"] = ("-I", board_dir)
     board_info["flash_count"] = len(flashes)
