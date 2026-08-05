@@ -16,14 +16,16 @@ if(SB_CONFIG_NET_CORE_IMAGE_HCI_IPC)
     # Upstream split hci_ipc's single nrf5340_cpunet_iso-bt_ll_sw_split.conf
     # into a base prj.conf plus extra-*.conf overlays. Use EXTRA_CONF_FILE, not
     # CONF_FILE: the latter replaces prj.conf, which would drop the base
-    # settings (IPC_SERVICE, MBOX, BT_HCI_RAW, BT_MAX_CONN) the old combined
-    # file used to carry. This matches upstream's own net-core sysbuild files,
-    # e.g. tests/bsim/bluetooth/ll/bis/sysbuild.cmake.
-    # hci_ipc_netcore.conf restores the net-core BT sizing the old combined
-    # file carried (notably BT_MAX_CONN=3); prj.conf uses 16, which overflows
-    # cpunet RAM at link time.
+    # settings (IPC_SERVICE, MBOX, BT_HCI_RAW) prj.conf now carries.
+    #
+    # Deliberately NOT layering upstream's extra-iso overlay here: it enables
+    # ISO and extended advertising, which _bleio never uses and cpunet's RAM
+    # cannot afford (issue #41), and mixing "overlay enables, our file
+    # disables" in one merge list produces orphaned-int Kconfig failures.
+    # hci_ipc_netcore.conf is the single source: the overlay's controller
+    # baseline minus ISO/ext-adv, plus the pre-rebase net-core sizing.
     set(${NET_APP}_EXTRA_CONF_FILE
-     ${NET_APP_SRC_DIR}/extra-iso-bt_ll_sw_split.conf\;${CMAKE_CURRENT_LIST_DIR}/hci_ipc_netcore.conf
+     ${CMAKE_CURRENT_LIST_DIR}/hci_ipc_netcore.conf
      CACHE INTERNAL ""
     )
 
