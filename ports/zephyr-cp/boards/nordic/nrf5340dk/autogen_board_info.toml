@@ -121,3 +121,9 @@ wifi = false
 zephyr_display = false
 zephyr_kernel = false
 zlib = true
+# extmod modules shared with MicroPython
+asyncio = true
+binascii = true
+json = true
+re = true
+select = true

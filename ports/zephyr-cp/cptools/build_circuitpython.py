@@ -67,9 +67,17 @@ DEFAULT_MODULES = [
     "adafruit_bus_device",
     "getpass",
     "storage",
+    "binascii",
+    "re",
+    "asyncio",
+    "select",
 ]
 # Flags that don't match with with a *bindings module. Some used by adafruit_requests
-MPCONFIG_FLAGS = ["array", "errno", "io", "json", "math"]
+MPCONFIG_FLAGS = ["array", "errno", "io", "json", "math", "binascii"]
+
+# extmod-based modules that should appear in the autogen list even though they
+# don't have shared-bindings/ or bindings/ directories.
+EXTMOD_MODULES = ["asyncio", "binascii", "json", "re", "select"]
 
 # List of other modules (the value) that can be enabled when another one (the key) is.
 REVERSE_DEPENDENCIES = {
@@ -370,7 +378,7 @@ def determine_enabled_modules(board_info, portdir, srcdir):
     return enabled_modules, module_reasons
 
 
-async def build_circuitpython():
+async def build_circuitpython():  # noqa: C901
     circuitpython_flags = ["-DCIRCUITPY"]
     port_flags = []
     enable_mpy_native = False
@@ -389,6 +397,10 @@ async def build_circuitpython():
     circuitpython_flags.append(f"-DCIRCUITPY_ENABLE_MPY_NATIVE={1 if enable_mpy_native else 0}")
     circuitpython_flags.append(f"-DCIRCUITPY_FULL_BUILD={1 if full_build else 0}")
     circuitpython_flags.append(f"-DCIRCUITPY_SETTINGS_TOML={1 if full_build else 0}")
+    circuitpython_flags.append(f"-DMICROPY_PY_ASYNC_AWAIT={1 if full_build else 0}")
+    circuitpython_flags.append(f"-DMICROPY_PY_ASYNCIO={1 if full_build else 0}")
+    circuitpython_flags.append(f"-DMICROPY_PY_SELECT={1 if full_build else 0}")
+    circuitpython_flags.append(f"-DMICROPY_PY_SELECT_SELECT={1 if full_build else 0}")
     circuitpython_flags.append("-DCIRCUITPY_STATUS_BAR=1")
     circuitpython_flags.append(f"-DCIRCUITPY_USB_HOST={1 if usb_host else 0}")
     circuitpython_flags.append(f"-DCIRCUITPY_BOARD_ID='\"{board}\"'")
@@ -461,6 +473,10 @@ async def build_circuitpython():
     supervisor_source = [
         "main.c",
         "extmod/modjson.c",
+        "extmod/modbinascii.c",
+        "extmod/modre.c",
+        "extmod/modasyncio.c",
+        "extmod/modselect.c",
         "extmod/vfs_fat.c",
         "lib/tlsf/tlsf.c",
         portdir / "background.c",
@@ -619,6 +635,16 @@ async def build_circuitpython():
             logger.warning(
                 f"autogen_board_info.toml is missing or out of date. Please run `make BOARD={board}` locally and commit {autogen_board_info_fn}."
             )
+    autogen_modules.add(tomlkit.comment("extmod modules shared with MicroPython"))
+    for extmod_module in EXTMOD_MODULES:
+        enabled = extmod_module in enabled_modules
+        v = tomlkit.item(enabled)
+        if extmod_module in module_reasons:
+            v.comment(module_reasons[extmod_module])
+        autogen_modules.add(extmod_module, v)
+        flag_name = MODULE_FLAG_NAMES.get(extmod_module, extmod_module.upper())
+        circuitpython_flags.append(f"-DCIRCUITPY_{flag_name}={1 if enabled else 0}")
+
     if autogen_board_info_fn.parent.exists():
         autogen_board_info_fn.write_text(tomlkit.dumps(autogen_board_info))
 

@@ -2,6 +2,7 @@
     partitions {
         /delete-node/ partition@620000;
         circuitpy_partition: partition@620000 {
+			compatible = "zephyr,mapped-partition";
             label = "circuitpy";
             reg = <0x00620000 (DT_SIZE_M(58) - DT_SIZE_K(128))>;
         };

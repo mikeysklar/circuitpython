@@ -21,7 +21,7 @@ void common_hal_audioi2sin_i2sin_construct(audioi2sin_i2sin_obj_t *self,
     const mcu_pin_obj_t *data, const mcu_pin_obj_t *main_clock,
     uint32_t sample_rate, uint8_t bit_depth, uint8_t output_bit_depth,
     bool mono, bool left_justified, bool samples_signed,
-    bool external_clock, bool invert_bit_clock);
+    bool external_clock);
 void common_hal_audioi2sin_i2sin_deinit(audioi2sin_i2sin_obj_t *self);
 bool common_hal_audioi2sin_i2sin_deinited(audioi2sin_i2sin_obj_t *self);
 uint32_t common_hal_audioi2sin_i2sin_record_to_buffer(audioi2sin_i2sin_obj_t *self,

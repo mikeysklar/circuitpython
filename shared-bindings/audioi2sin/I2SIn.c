@@ -35,7 +35,6 @@
 //|         left_justified: bool = False,
 //|         samples_signed: bool = True,
 //|         external_clock: bool = False,
-//|         invert_bit_clock: bool = False,
 //|     ) -> None:
 //|         """Create an I2SIn object associated with the given pins. This allows you to
 //|         record audio signals from an external I2S source (e.g. an I2S MEMS microphone
@@ -95,9 +94,6 @@
 //|           declaration rather than a measurement: the real rate is whatever the external word select
 //|           runs at, and `sample_rate` still reports the declared value. If the incoming clock stops,
 //|           `record` blocks (interruptible with Ctrl-C).
-//|         :param bool invert_bit_clock: Sample ``data`` on the falling edge of ``bit_clock`` instead of
-//|           the rising edge. Needed when the external clock source drives its data on the rising edge.
-//|           Only valid together with ``external_clock``.
 //|
 //|         Example, recording 16-bit mono samples from an INMP441::
 //|
@@ -121,7 +117,7 @@ static mp_obj_t audioi2sin_i2sin_make_new(const mp_obj_type_t *type, size_t n_ar
     enum { ARG_bit_clock, ARG_word_select, ARG_data, ARG_main_clock,
            ARG_sample_rate, ARG_bit_depth, ARG_output_bit_depth,
            ARG_mono, ARG_left_justified, ARG_samples_signed,
-           ARG_external_clock, ARG_invert_bit_clock };
+           ARG_external_clock };
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_bit_clock,        MP_ARG_REQUIRED | MP_ARG_OBJ },
         { MP_QSTR_word_select,      MP_ARG_REQUIRED | MP_ARG_OBJ },
@@ -134,17 +130,11 @@ static mp_obj_t audioi2sin_i2sin_make_new(const mp_obj_type_t *type, size_t n_ar
         { MP_QSTR_left_justified,   MP_ARG_KW_ONLY | MP_ARG_BOOL, {.u_bool = false} },
         { MP_QSTR_samples_signed,   MP_ARG_KW_ONLY | MP_ARG_BOOL, {.u_bool = true} },
         { MP_QSTR_external_clock,   MP_ARG_KW_ONLY | MP_ARG_BOOL, {.u_bool = false} },
-        { MP_QSTR_invert_bit_clock, MP_ARG_KW_ONLY | MP_ARG_BOOL, {.u_bool = false} },
     };
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
     mp_arg_parse_all_kw_array(n_args, n_kw, all_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
 
     bool external_clock = args[ARG_external_clock].u_bool;
-    bool invert_bit_clock = args[ARG_invert_bit_clock].u_bool;
-    if (invert_bit_clock && !external_clock) {
-        mp_raise_ValueError_varg(MP_ERROR_TEXT("%q requires %q"),
-            MP_QSTR_invert_bit_clock, MP_QSTR_external_clock);
-    }
 
     // In external clock mode the clock pins are only read, so they may already
     // be owned by whatever is driving them; let the port decide if the sharing
@@ -181,7 +171,7 @@ static mp_obj_t audioi2sin_i2sin_make_new(const mp_obj_type_t *type, size_t n_ar
     audioi2sin_i2sin_obj_t *self = mp_obj_malloc_with_finaliser(audioi2sin_i2sin_obj_t, &audioi2sin_i2sin_type);
     common_hal_audioi2sin_i2sin_construct(self, bit_clock, word_select, data, main_clock,
         sample_rate, bit_depth, output_bit_depth, mono, left_justified, samples_signed,
-        external_clock, invert_bit_clock);
+        external_clock);
 
     return MP_OBJ_FROM_PTR(self);
     #endif

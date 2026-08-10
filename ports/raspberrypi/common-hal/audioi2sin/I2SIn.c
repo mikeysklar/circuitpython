@@ -212,11 +212,10 @@ static const uint16_t i2sin_program_left_justified_swap_32[] = {
 // a 32-BCLK frame is one push (right<<16 | left), at 24/32 a 64-BCLK frame is
 // two pushes (right then left).
 //
-// The resync's own `wait 0/1 gpio B` already lands on the first data bit, so
-// against a CircuitPython clock source this program recovers the transmitted word
-// bit-exactly with no instruction for the Philips delay bit. The
-// `left_justified` variant is that program plus one more BCLK of skew,
-// the other of the two possible alignments;
+// The WS resync lands on the first data bit, so the program above is
+// the `left_justified` alignment: data starts on the WS edge and no instruction
+// is spent on a delay bit. The default (Philips) alignment is that program plus
+// one more BCLK of skew, the other of the two possible alignments.
 //
 // Free-running after the initial sync: the external frame must be exactly
 // 2 x bits_per_channel BCLKs, the same assumption internal clock mode already bakes
@@ -226,16 +225,13 @@ static const uint16_t i2sin_program_left_justified_swap_32[] = {
 #define I2SIN_EXT_CLOCK_WRAP_TARGET(len) ((int)(len) - 5)
 
 static size_t build_i2sin_ext_clock_program(uint16_t *prog, uint8_t bclk, uint8_t ws,
-    bool left_justified, bool invert_bit_clock) {
-    // Sampling on the falling edge of BCLK is the same program with the
-    // polarity of every BCLK wait flipped.
-    const uint16_t invert = invert_bit_clock ? 0x0080 : 0x0000;
-    const uint16_t wait_0_bclk = (0x2000 | bclk) ^ invert;
-    const uint16_t wait_1_bclk = (0x2080 | bclk) ^ invert;
+    bool left_justified) {
+    const uint16_t wait_0_bclk = 0x2000 | bclk;
+    const uint16_t wait_1_bclk = 0x2080 | bclk;
     size_t len = 0;
     prog[len++] = 0x2000 | ws;  // wait 0 gpio W
     prog[len++] = 0x2080 | ws;  // wait 1 gpio W
-    if (left_justified) {
+    if (!left_justified) {
         prog[len++] = wait_1_bclk;  // one more BCLK of skew
     }
     const size_t bitloop = len + 1;
@@ -262,7 +258,7 @@ void common_hal_audioi2sin_i2sin_construct(audioi2sin_i2sin_obj_t *self,
     const mcu_pin_obj_t *data, const mcu_pin_obj_t *main_clock,
     uint32_t sample_rate, uint8_t bit_depth, uint8_t output_bit_depth,
     bool mono, bool left_justified, bool samples_signed,
-    bool external_clock, bool invert_bit_clock) {
+    bool external_clock) {
 
     if (main_clock != NULL) {
         mp_raise_NotImplementedError_varg(MP_ERROR_TEXT("%q"), MP_QSTR_main_clock);
@@ -295,7 +291,7 @@ void common_hal_audioi2sin_i2sin_construct(audioi2sin_i2sin_obj_t *self,
         program_len = build_i2sin_ext_clock_program(ext_clock_program,
             i2s_wait_gpio_index(bit_clock, gpio_offset),
             i2s_wait_gpio_index(word_select, gpio_offset),
-            left_justified, invert_bit_clock);
+            left_justified);
         program = ext_clock_program;
         wait_gpio_mask = PIO_PINMASK_OR(PIO_PINMASK_FROM_PIN(bit_clock->number),
             PIO_PINMASK_FROM_PIN(word_select->number));

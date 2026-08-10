@@ -730,7 +730,7 @@ msgstr "Мягкая перезагрузка\n"
 #: ports/analog/common-hal/busio/SPI.c ports/analog/common-hal/busio/UART.c
 #: ports/stm/common-hal/audioio/AudioOut.c
 #: shared-bindings/digitalio/DigitalInOutProtocol.c
-#: shared-module/busdisplay/BusDisplay.c
+#: shared-module/busdisplay/BusDisplay.c shared-module/ssl/SSLContext.c
 msgid "%q init failed"
 msgstr "Инициализация %q не удалась"
 
@@ -1215,6 +1215,7 @@ msgstr "Слишком много дескрипторов"
 
 #: ports/espressif/common-hal/_bleio/Characteristic.c
 #: ports/nordic/common-hal/_bleio/Characteristic.c
+#: ports/zephyr-cp/common-hal/_bleio/Characteristic.c
 msgid "No CCCD for this Characteristic"
 msgstr "Для этой характеристики нет CCCD"
 
@@ -1237,11 +1238,13 @@ msgstr "максимальная_длина должна быть 0-%d когд�
 
 #: ports/espressif/common-hal/_bleio/PacketBuffer.c
 #: ports/nordic/common-hal/_bleio/PacketBuffer.c
+#: ports/zephyr-cp/common-hal/_bleio/PacketBuffer.c
 msgid "Writes not supported on Characteristic"
 msgstr "Запись не поддерживается в Характеристика"
 
 #: ports/espressif/common-hal/_bleio/PacketBuffer.c
 #: ports/nordic/common-hal/_bleio/PacketBuffer.c
+#: ports/zephyr-cp/common-hal/_bleio/PacketBuffer.c
 msgid "Total data to write is larger than %q"
 msgstr "Общее количество данных для записи превышает %q"
 
@@ -1256,6 +1259,9 @@ msgstr "Недопустимый параметр BLE"
 
 #: ports/espressif/common-hal/_bleio/__init__.c
 #: ports/nordic/common-hal/_bleio/__init__.c
+#: ports/zephyr-cp/common-hal/_bleio/Characteristic.c
+#: ports/zephyr-cp/common-hal/_bleio/Connection.c
+#: ports/zephyr-cp/common-hal/_bleio/Descriptor.c
 #: shared-bindings/_bleio/CharacteristicBuffer.c
 msgid "Not connected"
 msgstr "Не подключено"

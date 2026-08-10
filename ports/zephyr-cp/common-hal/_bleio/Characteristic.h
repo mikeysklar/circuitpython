@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <zephyr/bluetooth/gatt.h>
+
 #include "py/obj.h"
 #include "py/objlist.h"
 #include "shared-bindings/_bleio/Attribute.h"
@@ -14,8 +16,6 @@
 #include "common-hal/_bleio/Descriptor.h"
 #include "common-hal/_bleio/Service.h"
 #include "common-hal/_bleio/UUID.h"
-
-#include <zephyr/bluetooth/gatt.h>
 
 typedef struct _bleio_characteristic_obj {
     mp_obj_base_t base;
@@ -36,21 +36,28 @@ typedef struct _bleio_characteristic_obj {
     uint16_t cccd_handle;
     uint16_t sccd_handle;
     bool fixed_length;
-
-    // Zephyr GATT state. bt_gatt_attr entries hold POINTERS to chrc and to
-    // this object, so both must outlive registration -- hence stored inline.
-    struct bt_gatt_chrc chrc;
-    struct bt_gatt_attr *value_attr;
-    struct bt_gatt_attr *cccd_attr;
+    // Zephyr GATT server fields:
+    struct bt_gatt_chrc zephyr_chrc;
+    struct bt_uuid_128 zephyr_uuid;
+    struct bt_gatt_ccc_managed_user_data zephyr_ccc;
+    size_t value_attr_index;  // index in service attrs for notify
 } bleio_characteristic_obj_t;
 
 void bleio_characteristic_set_observer(bleio_characteristic_obj_t *self, mp_obj_t observer);
 void bleio_characteristic_clear_observer(bleio_characteristic_obj_t *self);
 
-// Zephyr ATT callbacks, installed into the attribute table by Service.c.
-ssize_t bleio_characteristic_attr_read(struct bt_conn *conn,
+// Callbacks used by Service.c when building GATT attr table
+ssize_t bleio_char_read_cb(struct bt_conn *conn,
     const struct bt_gatt_attr *attr, void *buf, uint16_t len, uint16_t offset);
-ssize_t bleio_characteristic_attr_write(struct bt_conn *conn,
+ssize_t bleio_char_write_cb(struct bt_conn *conn,
     const struct bt_gatt_attr *attr, const void *buf, uint16_t len,
     uint16_t offset, uint8_t flags);
-void bleio_characteristic_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value);
+void bleio_ccc_changed_cb(const struct bt_gatt_attr *attr, uint16_t value);
+ssize_t bleio_ccc_write_cb(struct bt_conn *conn,
+    const struct bt_gatt_attr *attr, uint16_t value);
+
+// Permission mapping helper
+uint16_t bleio_security_to_zephyr_perm(
+    bleio_attribute_security_mode_t read_perm,
+    bleio_attribute_security_mode_t write_perm,
+    bleio_characteristic_properties_t props);

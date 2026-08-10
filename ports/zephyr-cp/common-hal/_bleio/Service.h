@@ -7,17 +7,11 @@
 
 #pragma once
 
+#include <zephyr/bluetooth/gatt.h>
+
 #include "py/obj.h"
 #include "py/objlist.h"
 #include "common-hal/_bleio/UUID.h"
-
-#include <zephyr/bluetooth/gatt.h>
-
-// Attribute-table budget for ONE service. Each characteristic costs 3 slots in
-// the worst case (declaration + value + CCCD), plus 1 for the primary service
-// declaration itself.
-#define BLEIO_SERVICE_MAX_CHARACTERISTICS 8
-#define BLEIO_SERVICE_MAX_ATTRS (1 + (BLEIO_SERVICE_MAX_CHARACTERISTICS * 3))
 
 typedef struct bleio_service_obj {
     mp_obj_base_t base;
@@ -28,18 +22,11 @@ typedef struct bleio_service_obj {
     uint16_t end_handle;
     bool is_remote;
     bool is_secondary;
-
-    // Zephyr GATT server state. The attr array and the _ccc storage must
-    // remain valid for as long as the service is registered -- Zephyr keeps
-    // pointers into both -- so they are embedded here rather than allocated
-    // per registration.
-    struct bt_gatt_attr attrs[BLEIO_SERVICE_MAX_ATTRS];
-    struct _bt_gatt_ccc cccs[BLEIO_SERVICE_MAX_CHARACTERISTICS];
-    struct bt_gatt_service registration;
-    uint16_t attr_count;
+    // Zephyr GATT server fields:
+    struct bt_gatt_service zephyr_service;
+    struct bt_gatt_attr *attrs;
+    size_t attr_count;
+    size_t attr_capacity;
+    struct bt_uuid_128 zephyr_uuid;
     bool registered;
 } bleio_service_obj_t;
-
-// Register (or re-register) the service's attribute table with Zephyr.
-// Called when advertising starts, once all characteristics have been added.
-void bleio_service_register_if_needed(bleio_service_obj_t *self);

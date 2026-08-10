@@ -343,7 +343,6 @@ static size_t bleio_parse_adv_data(const uint8_t *raw, size_t raw_len, struct bt
         uint8_t data_len = field_len - 1;
         if (offset + field_len + 1 > raw_len ||
             count >= out_len ||
-            field_len < 1 ||
             storage_offset + data_len > storage_len) {
             mp_raise_ValueError(MP_ERROR_TEXT("Invalid advertising data"));
         }

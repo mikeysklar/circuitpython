@@ -722,7 +722,7 @@ msgstr ""
 #: ports/analog/common-hal/busio/SPI.c ports/analog/common-hal/busio/UART.c
 #: ports/stm/common-hal/audioio/AudioOut.c
 #: shared-bindings/digitalio/DigitalInOutProtocol.c
-#: shared-module/busdisplay/BusDisplay.c
+#: shared-module/busdisplay/BusDisplay.c shared-module/ssl/SSLContext.c
 msgid "%q init failed"
 msgstr "%q 초기화 실패"
 
@@ -1215,6 +1215,7 @@ msgstr ""
 
 #: ports/espressif/common-hal/_bleio/Characteristic.c
 #: ports/nordic/common-hal/_bleio/Characteristic.c
+#: ports/zephyr-cp/common-hal/_bleio/Characteristic.c
 msgid "No CCCD for this Characteristic"
 msgstr "이 특성에 대한 CCCD가 없습니다"
 
@@ -1237,11 +1238,13 @@ msgstr ""
 
 #: ports/espressif/common-hal/_bleio/PacketBuffer.c
 #: ports/nordic/common-hal/_bleio/PacketBuffer.c
+#: ports/zephyr-cp/common-hal/_bleio/PacketBuffer.c
 msgid "Writes not supported on Characteristic"
 msgstr ""
 
 #: ports/espressif/common-hal/_bleio/PacketBuffer.c
 #: ports/nordic/common-hal/_bleio/PacketBuffer.c
+#: ports/zephyr-cp/common-hal/_bleio/PacketBuffer.c
 msgid "Total data to write is larger than %q"
 msgstr ""
 
@@ -1257,6 +1260,9 @@ msgstr "잘못된 BLE 파라미터"
 
 #: ports/espressif/common-hal/_bleio/__init__.c
 #: ports/nordic/common-hal/_bleio/__init__.c
+#: ports/zephyr-cp/common-hal/_bleio/Characteristic.c
+#: ports/zephyr-cp/common-hal/_bleio/Connection.c
+#: ports/zephyr-cp/common-hal/_bleio/Descriptor.c
 #: shared-bindings/_bleio/CharacteristicBuffer.c
 msgid "Not connected"
 msgstr "연결되지 않았습니다"
