@@ -32,12 +32,4 @@ void bleio_adapter_reset(bleio_adapter_obj_t *adapter);
 // port_background_task().
 void bleio_background(void);
 
-typedef struct bleio_service_obj bleio_service_obj_t;
-
-// Queues a Service for bt_gatt_service_register(), which is deferred until
-// advertising starts (see common_hal_bleio_adapter_start_advertising()) so
-// that a service built up with several add_characteristic() calls registers
-// once, fully formed, rather than being re-registered after every call.
-void bleio_adapter_add_pending_service(bleio_service_obj_t *self);
-
 bool bleio_adapter_any_connected(void);

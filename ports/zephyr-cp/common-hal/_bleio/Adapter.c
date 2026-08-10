@@ -65,33 +65,6 @@ static bool ble_advertising_intent = false;
 // the callback and restart from their main loop for this reason.
 static atomic_t ble_advertising_resume_pending = ATOMIC_INIT(0);
 
-// Services queued by Service.c's constructor, registered with Zephyr when
-// advertising starts. Held as raw C pointers, not an mp_obj_list_t, so a
-// Service object could otherwise be GC-collected while these still point into
-// its embedded attr table -- bleio_adapter_gc_collect() below roots this array
-// the same way it roots bleio_connections.
-#define BLEIO_ADAPTER_MAX_PENDING_SERVICES 8
-static bleio_service_obj_t *pending_services[BLEIO_ADAPTER_MAX_PENDING_SERVICES];
-static size_t pending_service_count;
-
-void bleio_adapter_add_pending_service(bleio_service_obj_t *self) {
-    for (size_t i = 0; i < pending_service_count; i++) {
-        if (pending_services[i] == self) {
-            return;
-        }
-    }
-    if (pending_service_count >= BLEIO_ADAPTER_MAX_PENDING_SERVICES) {
-        raise_zephyr_error(-ENOSPC);
-    }
-    pending_services[pending_service_count++] = self;
-}
-
-static void bleio_adapter_register_pending_services(void) {
-    for (size_t i = 0; i < pending_service_count; i++) {
-        bleio_service_register_if_needed(pending_services[i]);
-    }
-}
-
 bool bleio_adapter_any_connected(void) {
     for (size_t i = 0; i < BLEIO_TOTAL_CONNECTION_COUNT; i++) {
         if (bleio_connections[i].conn != NULL) {
@@ -514,11 +487,6 @@ void common_hal_bleio_adapter_start_advertising(bleio_adapter_obj_t *self,
         raise_zephyr_error(-EALREADY);
     }
 
-    // Register any GATT services built up since the last (re)start. Deferred
-    // to here, rather than done eagerly in Service.c, so a service with
-    // several add_characteristic() calls registers once, fully formed.
-    bleio_adapter_register_pending_services();
-
     bt_addr_le_t id_addrs[CONFIG_BT_ID_MAX];
     size_t id_count = CONFIG_BT_ID_MAX;
     bt_id_get(id_addrs, &id_count);
@@ -802,11 +770,6 @@ bool common_hal_bleio_adapter_is_bonded_to_central(bleio_adapter_obj_t *self) {
 void bleio_adapter_gc_collect(bleio_adapter_obj_t *adapter) {
     gc_collect_root((void **)adapter, sizeof(bleio_adapter_obj_t) / sizeof(size_t));
     gc_collect_root((void **)bleio_connections, sizeof(bleio_connections) / sizeof(size_t));
-    // pending_services holds raw pointers into Service objects that Zephyr's
-    // attribute table also points into once registered; it must be rooted
-    // like bleio_connections above or a Service with no other Python
-    // reference could be collected while still registered.
-    gc_collect_root((void **)pending_services, sizeof(pending_services) / sizeof(size_t));
 }
 
 void bleio_adapter_reset(bleio_adapter_obj_t *adapter) {
@@ -833,16 +796,6 @@ void bleio_adapter_reset(bleio_adapter_obj_t *adapter) {
         }
         bleio_connection_clear(connection);
     }
-
-    // A VM reset collects every Python object, including any Service whose
-    // attrs[] Zephyr's GATT DB still points into. Unregister first so the
-    // stack drops those pointers before the objects become garbage; simply
-    // forgetting the queue here would leave the DB referencing freed memory.
-    for (size_t i = 0; i < pending_service_count; i++) {
-        common_hal_bleio_service_deinit(pending_services[i]);
-    }
-    pending_service_count = 0;
-    memset(pending_services, 0, sizeof(pending_services));
 
     adapter->scan_results = NULL;
     adapter->connection_objs = NULL;
