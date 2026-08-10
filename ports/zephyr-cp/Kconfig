@@ -87,3 +87,21 @@ config BT_GATT_DYNAMIC_DB
 
 config BT_GATT_CLIENT
 	default y
+
+# Zephyr defaults this to 0, which disables GATT long/reliable writes: any
+# Characteristic write that doesn't fit in a single ATT_WRITE_REQ is rejected
+# by the host before it reaches common-hal. One prepare buffer is the minimum
+# that makes long writes work at all.
+config BT_ATT_PREPARE_COUNT
+	default 2
+
+# Link supervision timeout. Zephyr's peripheral preferred-parameter default is
+# TIMEOUT=42, in 10ms units, so 420ms. With BT_GAP_AUTO_UPDATE_CONN_PARAMS=y
+# (also a Zephyr default) the host sends that preference to the central 5s
+# into every connection, actively downgrading a link the central had set up
+# more conservatively. At 420ms with a 30ms interval, 14 consecutive missed
+# connection events drop the link -- thin on any part where the BLE radio
+# coexists with Wi-Fi. 400 = 4.0s, Apple's accessory design guideline value.
+# Boards with a dedicated radio can override this downward.
+config BT_PERIPHERAL_PREF_TIMEOUT
+	default 400
