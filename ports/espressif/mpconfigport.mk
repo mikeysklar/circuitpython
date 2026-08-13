@@ -417,5 +417,14 @@ endif
 USB_NUM_ENDPOINT_PAIRS = 7
 USB_NUM_IN_ENDPOINTS = 5
 
+# usb_audio is compiled in on the S3 but claims no endpoints until
+# usb_audio.enable() is called from boot.py, so enabling it by default does not
+# affect existing boards. Freeing one IN endpoint (usb_hid.disable()) is then the
+# only thing a user needs, with no custom build. Left off for the S2, where the
+# audio endpoint FIFO does not fit in DRAM.
+ifeq ($(IDF_TARGET),esp32s3)
+CIRCUITPY_USB_AUDIO ?= 1
+endif
+
 # Usually lots of flash space available
 CIRCUITPY_MESSAGE_COMPRESSION_LEVEL ?= 1

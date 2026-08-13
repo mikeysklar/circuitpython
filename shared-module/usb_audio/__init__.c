@@ -18,6 +18,7 @@
 #include "py/mphal.h"
 #include "py/runtime.h"
 #include "supervisor/shared/tick.h"
+#include "supervisor/usb.h"
 #include "tusb.h"
 
 // Scratch chunk the microphone task hands to TinyUSB. It is written from the USB
@@ -522,7 +523,31 @@ bool tud_audio_set_itf_cb(uint8_t rhport, tusb_control_request_t const *p_reques
         usb_audio_usbspeaker_streaming_reset();
     } else if (itf == usb_audio_mic_as_itf) {
         usb_audio_mic_streaming = streaming;
+        if (streaming) {
+            // Prime the FIFO for the first frame; after that each completed
+            // transfer schedules the next refill via tud_audio_tx_done_isr().
+            usb_background_schedule();
+        }
     }
+    return true;
+}
+
+// Invoked from the audio class transfer-complete path once the next packet has
+// been loaded into the EP IN buffer. Audio is the only class TinyUSB services
+// directly in ISR context (usbd.c installs audiod_xfer_isr as the sole non-NULL
+// .xfer_isr), so isochronous completions never queue a USB event. A port that
+// pumps the optional class tasks from a task loop sitting behind tud_task()
+// therefore never refills the microphone FIFO. Scheduling the refill here keeps
+// usb_audio independent of how a port drives TinyUSB.
+bool tud_audio_tx_done_isr(uint8_t rhport, uint16_t n_bytes_sent, uint8_t func_id,
+    uint8_t ep_in, uint8_t cur_alt_setting) {
+    (void)rhport;
+    (void)n_bytes_sent;
+    (void)func_id;
+    (void)ep_in;
+    (void)cur_alt_setting;
+
+    usb_background_schedule();
     return true;
 }
 
