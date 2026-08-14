@@ -1541,11 +1541,13 @@ msgstr ""
 
 #: ports/espressif/common-hal/mdns/Server.c
 #: ports/raspberrypi/common-hal/mdns/Server.c
+#: ports/zephyr-cp/common-hal/mdns/Server.c
 msgid "mDNS only works with built-in WiFi"
 msgstr ""
 
 #: ports/espressif/common-hal/mdns/Server.c
 #: ports/raspberrypi/common-hal/mdns/Server.c
+#: ports/zephyr-cp/common-hal/mdns/Server.c
 msgid "mDNS already initialized"
 msgstr ""
 
@@ -1682,7 +1684,8 @@ msgstr ""
 msgid "Only IPv4 addresses supported"
 msgstr ""
 
-#: ports/mimxrt10xx/common-hal/busio/SPI.c shared-bindings/busio/SPI.c
+#: ports/mimxrt10xx/common-hal/busio/SPI.c
+#: ports/raspberrypi/bindings/wiznet/PIO_SPI.c shared-bindings/busio/SPI.c
 msgid "Must provide MISO or MOSI pin"
 msgstr ""
 
@@ -1844,6 +1847,17 @@ msgstr ""
 msgid "In-buffer elements must be <= 4 bytes long"
 msgstr ""
 
+#: ports/raspberrypi/bindings/wiznet/PIO_SPI.c shared-bindings/bitbangio/I2C.c
+#: shared-bindings/bitbangio/SPI.c shared-bindings/busio/I2C.c
+#: shared-bindings/busio/SPI.c
+msgid "Function requires lock"
+msgstr ""
+
+#: ports/raspberrypi/bindings/wiznet/PIO_SPI.c shared-bindings/bitbangio/SPI.c
+#: shared-bindings/busio/SPI.c
+msgid "buffer slices must be of equal length"
+msgstr ""
+
 #: ports/raspberrypi/common-hal/alarm/touch/TouchAlarm.c
 #: ports/stm/common-hal/alarm/touch/TouchAlarm.c
 msgid "Touch alarms not available"
@@ -1939,10 +1953,12 @@ msgid "Invalid %q and %q"
 msgstr ""
 
 #: ports/raspberrypi/common-hal/mdns/Server.c
+#: ports/zephyr-cp/common-hal/mdns/Server.c
 msgid "Failed to add service TXT record"
 msgstr ""
 
 #: ports/raspberrypi/common-hal/mdns/Server.c
+#: ports/zephyr-cp/common-hal/mdns/Server.c
 msgid "Out of MDNS service slots"
 msgstr ""
 
@@ -2240,12 +2256,33 @@ msgstr ""
 msgid "Use device tree to define %q devices"
 msgstr ""
 
+#: ports/zephyr-cp/common-hal/mdns/Server.c
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
+msgid "Failed to set hostname"
+msgstr ""
+
 #: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
 msgid "SocketPool can only be used with wifi.radio or hostnetwork.HostNetwork"
 msgstr ""
 
 #: ports/zephyr-cp/common-hal/wifi/Radio.c
-msgid "Failed to set hostname"
+msgid "DNS resolver not available"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
+msgid "Invalid DNS server address"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
+msgid "Clearing radio.dns is not supported"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
+msgid "DNS servers unchanged"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
+msgid "DNS resolver not built in"
 msgstr ""
 
 #: ports/zephyr-cp/common-hal/zephyr_display/Display.c
@@ -3732,6 +3769,7 @@ msgid "file must be a file opened in byte mode"
 msgstr ""
 
 #: shared-bindings/audiodelays/Chorus.c shared-bindings/audiodelays/Echo.c
+#: shared-bindings/audiodelays/Flanger.c
 #: shared-bindings/audiodelays/GranularPitchShift.c
 #: shared-bindings/audiodelays/MultiTapDelay.c
 #: shared-bindings/audiodelays/PitchShift.c
@@ -3750,25 +3788,12 @@ msgid "bits_per_sample must be 16"
 msgstr ""
 
 #: shared-bindings/audioi2sin/I2SIn.c
-msgid "%q requires %q"
-msgstr ""
-
-#: shared-bindings/audioi2sin/I2SIn.c
 #, c-format
 msgid "invalid destination buffer, must be an array of type: %c"
 msgstr ""
 
 #: shared-bindings/audioio/AudioOut.c
 msgid "%q and %q must be different"
-msgstr ""
-
-#: shared-bindings/bitbangio/I2C.c shared-bindings/bitbangio/SPI.c
-#: shared-bindings/busio/I2C.c shared-bindings/busio/SPI.c
-msgid "Function requires lock"
-msgstr ""
-
-#: shared-bindings/bitbangio/SPI.c shared-bindings/busio/SPI.c
-msgid "buffer slices must be of equal length"
 msgstr ""
 
 #: shared-bindings/bitmapfilter/__init__.c
