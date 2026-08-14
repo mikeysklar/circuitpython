@@ -1164,37 +1164,146 @@ void common_hal_wifi_radio_gc_collect(wifi_radio_obj_t *self) {
 }
 
 mp_obj_t common_hal_wifi_radio_get_dns(wifi_radio_obj_t *self) {
-    // if (!esp_netif_is_netif_up(self->netif)) {
-    //     return mp_const_empty_tuple;
-    // }
+    // Was a hardcoded `return mp_const_empty_tuple`, which reported "no DNS
+    // server" even with a working DHCP-supplied one. Zephyr keeps resolver
+    // state in the DNS resolve context rather than on the interface, so read
+    // it there -- the same place common_hal_wifi_radio_get_ipv4_dns() reads.
+    //
+    // The binding documents this as Sequence[str], so these are dotted-quad
+    // strings, not IPv4Address objects like ipv4_dns returns.
+    #if defined(CONFIG_DNS_RESOLVER)
+    if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
+        return mp_const_empty_tuple;
+    }
+    struct dns_resolve_context *ctx = dns_resolve_get_default();
+    if (ctx == NULL) {
+        return mp_const_empty_tuple;
+    }
 
-    // esp_netif_get_dns_info(self->netif, ESP_NETIF_DNS_MAIN, &self->dns_info);
+    mp_obj_t servers[CONFIG_DNS_RESOLVER_MAX_SERVERS];
+    size_t found = 0;
+    for (int i = 0; i < CONFIG_DNS_RESOLVER_MAX_SERVERS; i++) {
+        if (ctx->servers[i].dns_server.sa_family != AF_INET) {
+            continue;
+        }
+        struct sockaddr_in *addr = (struct sockaddr_in *)&ctx->servers[i].dns_server;
+        if (addr->sin_addr.s_addr == 0) {
+            continue;
+        }
+        char buf[NET_IPV4_ADDR_LEN];
+        if (net_addr_ntop(AF_INET, &addr->sin_addr, buf, sizeof(buf)) == NULL) {
+            continue;
+        }
+        servers[found++] = mp_obj_new_str(buf, strlen(buf));
+    }
 
-    // if (self->dns_info.ip.type == ESP_IPADDR_TYPE_V4 && self->dns_info.ip.u_addr.ip4.addr == INADDR_NONE) {
-    //     return mp_const_empty_tuple;
-    // }
-
-    // mp_obj_t args[] = {
-    //     espaddr_to_str(&self->dns_info.ip),
-    // };
-
-    // return mp_obj_new_tuple(1, args);
+    // Genuinely empty only when the resolver really has no server, rather
+    // than unconditionally as before.
+    if (found == 0) {
+        return mp_const_empty_tuple;
+    }
+    return mp_obj_new_tuple(found, servers);
+    #else
     return mp_const_empty_tuple;
+    #endif
 }
 
 void common_hal_wifi_radio_set_dns(wifi_radio_obj_t *self, mp_obj_t dns_addrs_obj) {
-    // mp_int_t len = mp_obj_get_int(mp_obj_len(dns_addrs_obj));
-    // mp_arg_validate_length_max(len, 1, MP_QSTR_dns);
-    // esp_netif_dns_info_t dns_info;
-    // if (len == 0) {
-    //     // clear DNS server
-    //     dns_info.ip.type = ESP_IPADDR_TYPE_V4;
-    //     dns_info.ip.u_addr.ip4.addr = INADDR_NONE;
-    // } else {
-    //     mp_obj_t dns_addr_obj = mp_obj_subscr(dns_addrs_obj, MP_OBJ_NEW_SMALL_INT(0), MP_OBJ_SENTINEL);
-    //     struct sockaddr_storage addr_storage;
-    //     socketpool_resolve_host_or_throw(AF_UNSPEC, SOCK_STREAM, mp_obj_str_get_str(dns_addr_obj), &addr_storage, 1);
-    //     sockaddr_to_espaddr(&addr_storage, &dns_info.ip);
-    // }
-    // esp_netif_set_dns_info(self->netif, ESP_NETIF_DNS_MAIN, &dns_info);
+    // The body used to be entirely commented out, so this accepted any value
+    // and silently discarded it -- code could set radio.dns, read back the
+    // old value, and never learn the assignment did nothing.
+    #if defined(CONFIG_DNS_RESOLVER)
+    mp_int_t len = mp_obj_get_int(mp_obj_len(dns_addrs_obj));
+    // CONFIG_DNS_RESOLVER_MAX_SERVERS is 1 on this board. Validate rather than
+    // truncate, so asking for more servers than the resolver can hold is an
+    // error instead of a silent partial apply.
+    mp_arg_validate_length_max(len, CONFIG_DNS_RESOLVER_MAX_SERVERS, MP_QSTR_dns);
+
+    struct dns_resolve_context *ctx = dns_resolve_get_default();
+    if (ctx == NULL) {
+        mp_raise_RuntimeError(MP_ERROR_TEXT("DNS resolver not available"));
+    }
+
+    // NULL terminated, per dns_resolve_reconfigure(). Zero-initialized, so a
+    // zero-length sequence clears the server list.
+    const char *servers[CONFIG_DNS_RESOLVER_MAX_SERVERS + 1] = { 0 };
+    for (mp_int_t i = 0; i < len; i++) {
+        mp_obj_t item = mp_obj_subscr(dns_addrs_obj, MP_OBJ_NEW_SMALL_INT(i), MP_OBJ_SENTINEL);
+        // Borrowed pointers into the Python strings. Safe because
+        // dns_resolve_reconfigure() parses them into its own storage before
+        // returning, and dns_addrs_obj stays reachable across this call.
+        servers[i] = mp_obj_str_get_str(item);
+    }
+
+    // Replacement depends on CONFIG_DNS_RECONFIGURE_CLEANUP being set in the
+    // board conf: without it dns_resolve_reconfigure() only fills free slots
+    // and returns 0 having installed nothing, which with
+    // CONFIG_DNS_RESOLVER_MAX_SERVERS=1 means an assignment silently does
+    // nothing once DHCP holds the slot. The guard below catches that case if
+    // the symbol is ever turned off again.
+    //
+    // DNS_SOURCE_MANUAL, so the resolver records that these came from the
+    // application. A later DHCP lease reconfigures with DNS_SOURCE_DHCPV4 and
+    // will replace them.
+    int res = dns_resolve_reconfigure(ctx, servers, NULL, DNS_SOURCE_MANUAL);
+    if (res < 0) {
+        raise_zephyr_error(res);
+    }
+
+    // Verify rather than trust. dns_resolve_reconfigure() reports success even
+    // when it installed nothing, and the removal above cannot always free the
+    // slot: dns_resolve_remove() matches only servers whose if_index equals the
+    // argument (resolve.c:3010-3020), while servers added through the string
+    // form get if_index 0 and are therefore unremovable by it. So a second
+    // assignment, or clearing with an empty sequence, can leave the old server
+    // in place. Rather than let that pass as success -- the exact silent-lie
+    // behaviour this function was rewritten to remove -- confirm the resolver
+    // now holds what was asked for, and raise if it does not.
+    // Compare addresses, not just how many there are. A count-only check passes
+    // when a replacement silently left the previous server in place, which is
+    // the same lie in a different shape.
+    size_t installed = 0;
+    for (int i = 0; i < CONFIG_DNS_RESOLVER_MAX_SERVERS; i++) {
+        if (ctx->servers[i].dns_server.sa_family == AF_INET &&
+            ((struct sockaddr_in *)&ctx->servers[i].dns_server)->sin_addr.s_addr != 0) {
+            installed++;
+        }
+    }
+
+    bool applied = (installed == (size_t)len);
+    for (mp_int_t i = 0; applied && i < len; i++) {
+        struct net_sockaddr_in want = { 0 };
+        if (!net_ipaddr_parse(servers[i], strlen(servers[i]),
+            (struct net_sockaddr *)&want)) {
+            mp_raise_ValueError(MP_ERROR_TEXT("Invalid DNS server address"));
+        }
+        bool found = false;
+        for (int j = 0; j < CONFIG_DNS_RESOLVER_MAX_SERVERS; j++) {
+            if (ctx->servers[j].dns_server.sa_family != AF_INET) {
+                continue;
+            }
+            struct sockaddr_in *have = (struct sockaddr_in *)&ctx->servers[j].dns_server;
+            if (have->sin_addr.s_addr == want.sin_addr.s_addr) {
+                found = true;
+                break;
+            }
+        }
+        applied = found;
+    }
+
+    if (!applied) {
+        // Do not assert a cause here. Clearing with an empty sequence fails for
+        // a different reason than a full slot list does -- reconfigure treats
+        // "no servers given" as nothing to do -- and naming the wrong cause in
+        // the message is its own small lie. State only what is certain.
+        if (len == 0) {
+            mp_raise_RuntimeError(MP_ERROR_TEXT("Clearing radio.dns is not supported"));
+        }
+        mp_raise_RuntimeError(MP_ERROR_TEXT("DNS servers unchanged"));
+    }
+    #else
+    (void)self;
+    (void)dns_addrs_obj;
+    mp_raise_NotImplementedError(MP_ERROR_TEXT("DNS resolver not built in"));
+    #endif
 }
