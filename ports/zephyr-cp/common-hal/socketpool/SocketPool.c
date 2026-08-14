@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include <zephyr/net/socket.h>
+#include <zephyr/net/dns_resolve.h>
 
 void common_hal_socketpool_socketpool_construct(socketpool_socketpool_obj_t *self, mp_obj_t radio) {
     bool is_wifi = false;
@@ -92,6 +93,43 @@ static mp_obj_t convert_addrinfo(const struct zsock_addrinfo *ai, int port) {
     result->items[4] = convert_sockaddr(ai, port);
     return result;
 }
+static MP_NORETURN void socketpool_raise_gaierror(int err) {
+    vstr_t vstr;
+    mp_print_t print;
+    vstr_init_print(&vstr, 64, &print);
+
+    // Map Zephyr DNS error codes to human-readable messages
+    switch (err) {
+        case DNS_EAI_NONAME:
+            mp_printf(&print, "%S", MP_ERROR_TEXT("Name or service not known"));
+            break;
+        case DNS_EAI_AGAIN:
+            mp_printf(&print, "%S", MP_ERROR_TEXT("Temporary failure in name resolution"));
+            break;
+        case DNS_EAI_FAIL:
+            mp_printf(&print, "%S", MP_ERROR_TEXT("Non-recoverable failure in name resolution"));
+            break;
+        case DNS_EAI_NODATA:
+            mp_printf(&print, "%S", MP_ERROR_TEXT("No address associated with hostname"));
+            break;
+        case DNS_EAI_ADDRFAMILY:
+            mp_printf(&print, "%S", MP_ERROR_TEXT("Address family for hostname not supported"));
+            break;
+        case DNS_EAI_SYSTEM:
+            mp_printf(&print, "%S", MP_ERROR_TEXT("System error"));
+            break;
+        default:
+            mp_printf(&print, "%S (%d)", MP_ERROR_TEXT("Name resolution failed"), err);
+            break;
+    }
+
+    mp_obj_t exc_args[] = {
+        MP_OBJ_NEW_SMALL_INT(err),
+        mp_obj_new_str_from_vstr(&vstr),
+    };
+    nlr_raise(mp_obj_new_exception_args(&mp_type_gaierror, MP_ARRAY_SIZE(exc_args), exc_args));
+}
+
 
 mp_obj_t common_hal_socketpool_getaddrinfo_raise(socketpool_socketpool_obj_t *self, const char *host, int port, int family, int type, int proto, int flags) {
     const struct zsock_addrinfo hints = {
@@ -104,7 +142,10 @@ mp_obj_t common_hal_socketpool_getaddrinfo_raise(socketpool_socketpool_obj_t *se
     struct zsock_addrinfo *res = NULL;
     int err = socketpool_getaddrinfo_common(host, port, &hints, &res);
     if (err != 0 || res == NULL) {
-        common_hal_socketpool_socketpool_raise_gaierror_noname();
+        if (err == 0) {
+            err = DNS_EAI_NONAME;
+        }
+        socketpool_raise_gaierror(err);
     }
 
     nlr_buf_t nlr;

@@ -1679,6 +1679,7 @@ msgstr ""
 
 #: ports/espressif/common-hal/wifi/__init__.c
 #: ports/raspberrypi/common-hal/wifi/__init__.c
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
 msgid "Only IPv4 addresses supported"
 msgstr ""
 
@@ -2258,12 +2259,61 @@ msgstr ""
 msgid "SocketPool can only be used with wifi.radio or hostnetwork.HostNetwork"
 msgstr ""
 
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+#: shared-bindings/socketpool/SocketPool.c
+msgid "Name or service not known"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "Temporary failure in name resolution"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "Non-recoverable failure in name resolution"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "No address associated with hostname"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "Address family for hostname not supported"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "System error"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "Name resolution failed"
+msgstr ""
+
 #: ports/zephyr-cp/common-hal/usb_hid/Device.c shared-module/usb_hid/Device.c
 msgid "USB error"
 msgstr ""
 
 #: ports/zephyr-cp/common-hal/wifi/Radio.c
 msgid "Failed to set hostname"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
+msgid "DNS resolver not available"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
+msgid "Invalid DNS server address"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
+msgid "Clearing radio.dns is not supported"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
+msgid "DNS servers unchanged"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
+msgid "DNS resolver not built in"
 msgstr ""
 
 #: ports/zephyr-cp/common-hal/zephyr_display/Display.c
@@ -4161,10 +4211,6 @@ msgstr ""
 
 #: shared-bindings/socketpool/Socket.c shared-bindings/ssl/SSLSocket.c
 msgid "buffer too small for requested bytes"
-msgstr ""
-
-#: shared-bindings/socketpool/SocketPool.c
-msgid "Name or service not known"
 msgstr ""
 
 #: shared-bindings/spitarget/SPITarget.c
