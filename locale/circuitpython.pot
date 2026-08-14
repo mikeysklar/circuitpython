@@ -1681,6 +1681,7 @@ msgstr ""
 
 #: ports/espressif/common-hal/wifi/__init__.c
 #: ports/raspberrypi/common-hal/wifi/__init__.c
+#: ports/zephyr-cp/common-hal/wifi/Radio.c
 msgid "Only IPv4 addresses supported"
 msgstr ""
 
@@ -2263,6 +2264,35 @@ msgstr ""
 
 #: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
 msgid "SocketPool can only be used with wifi.radio or hostnetwork.HostNetwork"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+#: shared-bindings/socketpool/SocketPool.c
+msgid "Name or service not known"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "Temporary failure in name resolution"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "Non-recoverable failure in name resolution"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "No address associated with hostname"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "Address family for hostname not supported"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "System error"
+msgstr ""
+
+#: ports/zephyr-cp/common-hal/socketpool/SocketPool.c
+msgid "Name resolution failed"
 msgstr ""
 
 #: ports/zephyr-cp/common-hal/wifi/Radio.c
@@ -4180,10 +4210,6 @@ msgstr ""
 
 #: shared-bindings/socketpool/Socket.c shared-bindings/ssl/SSLSocket.c
 msgid "buffer too small for requested bytes"
-msgstr ""
-
-#: shared-bindings/socketpool/SocketPool.c
-msgid "Name or service not known"
 msgstr ""
 
 #: shared-bindings/spitarget/SPITarget.c
