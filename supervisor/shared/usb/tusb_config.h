@@ -129,7 +129,14 @@ extern "C" {
 // wMaxPacketSize, sized for the highest supported sample rate.
 #define CFG_TUD_AUDIO_FUNC_1_EP_IN_SZ_MAX           TUD_AUDIO_EP_SIZE(TUD_OPT_HIGH_SPEED, USB_AUDIO_MAX_SAMPLE_RATE, USB_AUDIO_N_BYTES_PER_SAMPLE, USB_AUDIO_N_CHANNELS)
 // Deep software FIFO so the 1 ms refill keeps clear of the underrun floor.
+// The ESP32-S2 does not have room for the default buffer: at 16x the build
+// overflows dram0_0_seg by 768 bytes. Flow control needs at least 4*Navg, which
+// is 4*192 = 768 bytes at 48 kHz stereo, so 8x (1568 bytes) still clears it.
+#if defined(CONFIG_IDF_TARGET_ESP32S2)
+#define CFG_TUD_AUDIO_FUNC_1_EP_IN_SW_BUF_SZ        (8 * CFG_TUD_AUDIO_FUNC_1_EP_IN_SZ_MAX)
+#else
 #define CFG_TUD_AUDIO_FUNC_1_EP_IN_SW_BUF_SZ        (16 * CFG_TUD_AUDIO_FUNC_1_EP_IN_SZ_MAX)
+#endif
 
 // OUT endpoint (host -> board speaker). Compiled into the class driver
 // unconditionally; whether it actually enumerates is decided by the emitted
