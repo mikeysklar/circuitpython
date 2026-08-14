@@ -130,17 +130,27 @@ class Summary:
 
     def __str__(self):
         head = "%-22s %3d/%-3d  %6.1f%%  " % (
-            self.label, len(self.ok), self.total, self.success_rate)
+            self.label,
+            len(self.ok),
+            self.total,
+            self.success_rate,
+        )
         if self.latencies:
             head += "min %6.1f  med %6.1f  p95 %6.1f  max %7.1f ms  %5.1f req/s" % (
-                self.latencies[0], statistics.median(self.latencies),
-                self.percentile(95), self.latencies[-1],
-                self.total / self.elapsed_s if self.elapsed_s > 0 else 0.0)
+                self.latencies[0],
+                statistics.median(self.latencies),
+                self.percentile(95),
+                self.latencies[-1],
+                self.total / self.elapsed_s if self.elapsed_s > 0 else 0.0,
+            )
         else:
             head += "no successful requests"
         if self.bad:
             head += "\n%-22s errors: %s | first failure at request #%s" % (
-                "", self.breakdown(), self.first_failure)
+                "",
+                self.breakdown(),
+                self.first_failure,
+            )
         return head
 
 
@@ -251,20 +261,31 @@ def probe(host, port=DEFAULT_PORT, timeout=5.0):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--host", required=True, help="board IPv4 address")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--timeout", type=float, default=5.0, help="per-request socket timeout (s)")
     ap.add_argument("--sequential", type=int, default=20, help="sequential count (0 to skip)")
-    ap.add_argument("--spacing", type=float, default=0.0,
-                    help="ms between sequential requests; >=100 dodges the conns[] race")
-    ap.add_argument("--concurrency", type=int, default=None,
-                    help="run one concurrency level instead of the sweep")
-    ap.add_argument("--requests", type=int, default=None,
-                    help="requests per level (default: 4x the level)")
+    ap.add_argument(
+        "--spacing",
+        type=float,
+        default=0.0,
+        help="ms between sequential requests; >=100 dodges the conns[] race",
+    )
+    ap.add_argument(
+        "--concurrency",
+        type=int,
+        default=None,
+        help="run one concurrency level instead of the sweep",
+    )
+    ap.add_argument(
+        "--requests", type=int, default=None, help="requests per level (default: 4x the level)"
+    )
     ap.add_argument("--sweep", default=",".join(str(x) for x in DEFAULT_SWEEP))
-    ap.add_argument("--settle", type=float, default=1.5,
-                    help="seconds between levels, to let conns[] recycle")
+    ap.add_argument(
+        "--settle", type=float, default=1.5, help="seconds between levels, to let conns[] recycle"
+    )
     args = ap.parse_args(argv)
 
     print("=" * 78)
@@ -285,8 +306,11 @@ def main(argv=None):
         print("  %s" % s)
         phases.append(s)
 
-    levels = ([args.concurrency] if args.concurrency
-              else [int(x) for x in args.sweep.split(",") if x.strip()])
+    levels = (
+        [args.concurrency]
+        if args.concurrency
+        else [int(x) for x in args.sweep.split(",") if x.strip()]
+    )
     if levels:
         print("\n[concurrent] burst levels: %s" % ", ".join(str(x) for x in levels))
         for c in levels:
@@ -299,8 +323,10 @@ def main(argv=None):
     print("SUMMARY")
     print("=" * 78)
     for s in phases:
-        print("  %s %-18s %6.1f%%  (%d failed)" % (
-            "ok  " if not s.bad else "FAIL", s.label, s.success_rate, len(s.bad)))
+        print(
+            "  %s %-18s %6.1f%%  (%d failed)"
+            % ("ok  " if not s.bad else "FAIL", s.label, s.success_rate, len(s.bad))
+        )
 
     broke = [s.label for s in phases if s.bad]
     print()

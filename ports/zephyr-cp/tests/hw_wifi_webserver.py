@@ -216,8 +216,10 @@ def _accept_loop(listener, req_buf, served, errors):
             # that descriptors are not the ceiling.
             errors += 1
             kind = "DESCRIPTORS" if err in (EMFILE, ENFILE) else "other"
-            print("ACCEPT FAILED (#%d, %s errno=%s): %r  [served=%d free=%d]"
-                  % (errors, kind, err, e, served, gc.mem_free()))
+            print(
+                "ACCEPT FAILED (#%d, %s errno=%s): %r  [served=%d free=%d]"
+                % (errors, kind, err, e, served, gc.mem_free())
+            )
             # Give the stack a moment to recycle whatever ran out.
             time.sleep(0.05)
             continue
@@ -241,8 +243,7 @@ def _accept_loop(listener, req_buf, served, errors):
             )
             conn.send(resp.encode("utf-8"))
             dt = (time.monotonic() - t0) * 1000
-            print("#%-4d %s %-28s %6.1fms free=%d"
-                  % (served, addr[0], line, dt, gc.mem_free()))
+            print("#%-4d %s %-28s %6.1fms free=%d" % (served, addr[0], line, dt, gc.mem_free()))
         except Exception as e:  # noqa: BLE001
             # Deliberately not just OSError: a non-OSError escaping here would
             # kill the server mid-sweep and read as a board hang from the host

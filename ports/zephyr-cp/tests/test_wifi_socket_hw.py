@@ -110,19 +110,19 @@ class BoardServer:
         s = self._serial
         time.sleep(1.0)
         s.reset_input_buffer()
-        s.write(b"\x03")            # interrupt whatever is running
+        s.write(b"\x03")  # interrupt whatever is running
         time.sleep(0.8)
         s.reset_input_buffer()
-        s.write(b"\x05")            # paste mode
+        s.write(b"\x05")  # paste mode
         time.sleep(0.6)
 
         data = source.encode() + b"\r\n"
         for i in range(0, len(data), CHUNK_BYTES):
-            s.write(data[i:i + CHUNK_BYTES])
+            s.write(data[i : i + CHUNK_BYTES])
             s.flush()
             time.sleep(CHUNK_DELAY)
         time.sleep(0.8)
-        s.write(b"\x04")            # execute
+        s.write(b"\x04")  # execute
 
         self._reader = threading.Thread(target=self._pump, daemon=True)
         self._reader.start()
@@ -133,8 +133,8 @@ class BoardServer:
                 return
             time.sleep(0.2)
         raise AssertionError(
-            "board server did not start within %.0fs; log tail:\n%s"
-            % (timeout, self.log[-2000:]))
+            "board server did not start within %.0fs; log tail:\n%s" % (timeout, self.log[-2000:])
+        )
 
     def stop(self):
         try:
@@ -210,8 +210,7 @@ def wait_until_stable(consecutive=3, deadline_s=30.0, quiet_s=3.0):
         else:
             streak = 0
         time.sleep(0.2)
-    raise AssertionError(
-        "board did not settle within %.0fs" % deadline_s)
+    raise AssertionError("board did not settle within %.0fs" % deadline_s)
 
 
 def test_server_reachable(board_server):
@@ -222,7 +221,10 @@ def test_server_reachable(board_server):
     """
     result = load.probe(BOARD_IP)
     assert result.ok, "probe failed (%s: %s); board log tail:\n%s" % (
-        result.error_class, result.detail, board_server.log[-1500:])
+        result.error_class,
+        result.detail,
+        board_server.log[-1500:],
+    )
 
 
 def test_sequential_spaced_is_clean(board_server):
@@ -244,7 +246,9 @@ def test_sequential_spaced_is_clean(board_server):
     wait_until_stable()
     summary = load.run_sequential(BOARD_IP, count=20, spacing_ms=500)
     assert summary.success_rate == 100.0, "%s\nboard log tail:\n%s" % (
-        summary, board_server.log[-1500:])
+        summary,
+        board_server.log[-1500:],
+    )
 
 
 def test_burst_never_exhausts_descriptors(board_server):
@@ -261,12 +265,13 @@ def test_burst_never_exhausts_descriptors(board_server):
     """
     for level in (1, 2, 4, 6, 8, 12, 16):
         load.run_concurrent(BOARD_IP, concurrency=level)
-        time.sleep(1.5)   # let conns[] recycle between levels
+        time.sleep(1.5)  # let conns[] recycle between levels
 
     descriptor_failures = board_server.accept_failures("DESCRIPTORS")
     assert not descriptor_failures, (
         "accept() hit the descriptor ceiling, which it never has before:\n%s"
-        % "\n".join(descriptor_failures))
+        % "\n".join(descriptor_failures)
+    )
 
 
 def test_failures_are_rate_sensitive_not_concurrency_sensitive(board_server):
@@ -293,7 +298,8 @@ def test_failures_are_rate_sensitive_not_concurrency_sensitive(board_server):
 
     assert spaced.success_rate >= unspaced.success_rate, (
         "spacing made things worse, which contradicts the conns[] model\n"
-        "unspaced: %s\nspaced:   %s" % (unspaced, spaced))
+        "unspaced: %s\nspaced:   %s" % (unspaced, spaced)
+    )
 
     # Deliberately NOT asserting spaced == 100% here, unlike
     # test_sequential_spaced_is_clean. That test measures from an idle board
