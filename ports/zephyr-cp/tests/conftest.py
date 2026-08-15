@@ -33,6 +33,7 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "circuitpy_drive(files): run CircuitPython with files in the flash image"
     )
+    config.addinivalue_line("markers", "hw: tests that require a real board")
     config.addinivalue_line(
         "markers", "disable_i2c_devices(*names): disable native_sim I2C emulator devices"
     )
