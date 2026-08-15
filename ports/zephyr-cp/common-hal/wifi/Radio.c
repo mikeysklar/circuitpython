@@ -735,7 +735,6 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_gateway_ap(wifi_radio_obj_t *self) {
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_subnet(wifi_radio_obj_t *self) {
-    // Was a hardcoded `return mp_const_none`.
     if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
         return mp_const_none;
     }
@@ -798,15 +797,9 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_subnet_ap(wifi_radio_obj_t *self) {
 // }
 
 mp_obj_t common_hal_wifi_radio_get_addresses(wifi_radio_obj_t *self) {
-    // Was `return mp_const_none`, but the shared-bindings contract
-    // (shared-bindings/wifi/Radio.c: "addresses: Sequence[str] ... Empty
-    // sequence when not connected") requires a sequence, never None -- so
-    // this returned the wrong type in the connected case and the wrong
-    // *value* (None instead of ()) when disconnected. Same underlying
-    // address as wifi_radio_get_ipv4_address() above and
-    // common_hal_wifi_radio_get_ipv4_address() (both already fixed);
-    // formatted as a string here rather than an IPv4Address object, per the
-    // Sequence[str] contract other ports also follow.
+    // shared-bindings documents this as Sequence[str], empty when not
+    // connected, so format as a dotted-quad string rather than returning an
+    // IPv4Address object. Same address as wifi_radio_get_ipv4_address().
     uint32_t ipv4_address = wifi_radio_get_ipv4_address(self);
     if (ipv4_address == 0) {
         return mp_const_empty_tuple;
@@ -828,12 +821,8 @@ mp_obj_t common_hal_wifi_radio_get_addresses_ap(wifi_radio_obj_t *self) {
 }
 
 uint32_t wifi_radio_get_ipv4_address(wifi_radio_obj_t *self) {
-    // Was a hardcoded `return 0`, so the status bar and /cp/version.json's
-    // "ip" field stayed blank even with a real DHCP lease: this is the raw
-    // uint32_t sibling of common_hal_wifi_radio_get_ipv4_address() below
-    // (that one returns an mp_obj_t and was already fixed), used internally
-    // by supervisor/shared/web_workflow/web_workflow.c rather than from
-    // Python.
+    // Raw uint32_t sibling of common_hal_wifi_radio_get_ipv4_address(),
+    // used internally by supervisor/shared/web_workflow/web_workflow.c.
     if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
         return 0;
     }
@@ -865,8 +854,8 @@ mp_obj_t common_hal_wifi_radio_get_ipv4_address_ap(wifi_radio_obj_t *self) {
 }
 
 mp_obj_t common_hal_wifi_radio_get_ipv4_dns(wifi_radio_obj_t *self) {
-    // Was a hardcoded `return mp_const_none`. Zephyr keeps resolver state in
-    // the DNS resolve context rather than on the interface, so read it there.
+    // Zephyr keeps resolver state in the DNS resolve context rather than on
+    // the interface, so read it there.
     #if defined(CONFIG_DNS_RESOLVER)
     if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
         return mp_const_none;
@@ -1037,10 +1026,8 @@ mp_int_t common_hal_wifi_radio_ping(wifi_radio_obj_t *self, mp_obj_t ip_address,
         mp_raise_ValueError(MP_ERROR_TEXT("Only IPv4 addresses supported"));
     }
 
-    // MP_OBJ_TO_PTR is required, not decorative: get_packed() takes a concrete
-    // ipaddress_ipv4address_obj_t *, and mp_obj_t is only a bare pointer under
-    // object representation A. Passing ip_address raw would stop compiling under
-    // repr C/D, where MP_OBJ_TO_PTR is ((void *)(uintptr_t)(o)).
+    // get_packed() takes a concrete ipaddress_ipv4address_obj_t *, so the
+    // MP_OBJ_TO_PTR is needed under object representations C and D.
     ipaddress_ipv4address_obj_t *addr_obj = MP_OBJ_TO_PTR(ip_address);
     size_t packed_len;
     const char *packed = mp_obj_str_get_data(
@@ -1121,15 +1108,9 @@ mp_int_t common_hal_wifi_radio_ping(wifi_radio_obj_t *self, mp_obj_t ip_address,
             break;
         }
 
-        // Poll in 50 ms slices so ctrl-C stays responsive, but never wait past
-        // the caller's deadline. Without this clamp a timeout shorter than one
-        // slice would still block for the full 50 ms, and a reply arriving in
-        // that window would be reported as a success even though the round trip
-        // exceeded the timeout it was given. That turns a correct None into a
-        // wrong number, so do not "simplify" the clamp back out.
-        //
-        // Spelled out rather than using MIN(): both py/misc.h and
-        // zephyr/sys/util.h define that macro and this file includes both.
+        // Poll in 50 ms slices so ctrl-C stays responsive, clamped to the
+        // caller's deadline so a reply arriving after the timeout is not
+        // reported as a success.
         int64_t wait_ms = remaining_ms < 50 ? remaining_ms : 50;
 
         if (k_sem_take(&session.reply_sem, K_MSEC(wait_ms)) == 0) {
@@ -1164,13 +1145,10 @@ void common_hal_wifi_radio_gc_collect(wifi_radio_obj_t *self) {
 }
 
 mp_obj_t common_hal_wifi_radio_get_dns(wifi_radio_obj_t *self) {
-    // Was a hardcoded `return mp_const_empty_tuple`, which reported "no DNS
-    // server" even with a working DHCP-supplied one. Zephyr keeps resolver
-    // state in the DNS resolve context rather than on the interface, so read
-    // it there -- the same place common_hal_wifi_radio_get_ipv4_dns() reads.
-    //
-    // The binding documents this as Sequence[str], so these are dotted-quad
-    // strings, not IPv4Address objects like ipv4_dns returns.
+    // Zephyr keeps resolver state in the DNS resolve context rather than on
+    // the interface, so read it there, as common_hal_wifi_radio_get_ipv4_dns()
+    // does. The binding documents Sequence[str], so these are dotted-quad
+    // strings rather than IPv4Address objects.
     #if defined(CONFIG_DNS_RESOLVER)
     if (self->sta_netif == NULL || !net_if_is_up(self->sta_netif)) {
         return mp_const_empty_tuple;
@@ -1209,9 +1187,6 @@ mp_obj_t common_hal_wifi_radio_get_dns(wifi_radio_obj_t *self) {
 }
 
 void common_hal_wifi_radio_set_dns(wifi_radio_obj_t *self, mp_obj_t dns_addrs_obj) {
-    // The body used to be entirely commented out, so this accepted any value
-    // and silently discarded it -- code could set radio.dns, read back the
-    // old value, and never learn the assignment did nothing.
     #if defined(CONFIG_DNS_RESOLVER)
     mp_int_t len = mp_obj_get_int(mp_obj_len(dns_addrs_obj));
     // CONFIG_DNS_RESOLVER_MAX_SERVERS is 1 on this board. Validate rather than
