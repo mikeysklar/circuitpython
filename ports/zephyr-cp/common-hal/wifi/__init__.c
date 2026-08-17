@@ -335,6 +335,12 @@ void common_hal_wifi_init(bool user_initiated) {
 }
 
 void wifi_user_reset(void) {
+    // Always drop the scan object. It lives on the CircuitPython heap, which is
+    // about to be reset, and the radio is otherwise left marked busy. This has
+    // to be outside the check below: when the supervisor owns the radio, as it
+    // does for the web workflow, wifi_user_initiated is false and wifi_reset()
+    // never runs.
+    common_hal_wifi_radio_obj.current_scan = NULL;
     if (wifi_user_initiated) {
         wifi_reset();
         wifi_user_initiated = false;

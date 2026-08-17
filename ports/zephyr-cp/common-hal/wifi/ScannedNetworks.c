@@ -40,6 +40,8 @@ static bool wifi_scannednetworks_wait_for_scan(wifi_scannednetworks_obj_t *self)
 
 mp_obj_t common_hal_wifi_scannednetworks_next(wifi_scannednetworks_obj_t *self) {
     if (self->done) {
+        // Iteration finished, so the radio is free to scan again.
+        common_hal_wifi_radio_obj.current_scan = NULL;
         return mp_const_none;
     }
     // If we don't have any results queued, then wait until we do. Poll in short
@@ -73,6 +75,7 @@ mp_obj_t common_hal_wifi_scannednetworks_next(wifi_scannednetworks_obj_t *self) 
             wifi_scannednetworks_scan_next_channel(self);
         }
         if (self->done) {
+            common_hal_wifi_radio_obj.current_scan = NULL;
             return mp_const_none;
         }
     }
@@ -140,4 +143,5 @@ void wifi_scannednetworks_deinit(wifi_scannednetworks_obj_t *self) {
         #endif
     }
     wifi_scannednetworks_done(self);
+    common_hal_wifi_radio_obj.current_scan = NULL;
 }
