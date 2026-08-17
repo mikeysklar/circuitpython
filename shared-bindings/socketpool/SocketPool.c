@@ -190,15 +190,26 @@ MP_DEFINE_CONST_OBJ_TYPE(
     );
 
 MP_WEAK MP_NORETURN
-void common_hal_socketpool_socketpool_raise_gaierror_noname(void) {
+void common_hal_socketpool_socketpool_raise_gaierror(int err) {
     vstr_t vstr;
     mp_print_t print;
     vstr_init_print(&vstr, 64, &print);
-    mp_printf(&print, "%S", MP_ERROR_TEXT("Name or service not known"));
+    // Reuse the one message and carry the code, rather than a string per errno.
+    // The code is what callers can act on, and it lands in args[0] too.
+    if (err == SOCKETPOOL_EAI_NONAME) {
+        mp_printf(&print, "%S", MP_ERROR_TEXT("Name or service not known"));
+    } else {
+        mp_printf(&print, "%S (%d)", MP_ERROR_TEXT("Name or service not known"), err);
+    }
 
     mp_obj_t exc_args[] = {
-        MP_OBJ_NEW_SMALL_INT(SOCKETPOOL_EAI_NONAME),
+        MP_OBJ_NEW_SMALL_INT(err),
         mp_obj_new_str_from_vstr(&vstr),
     };
     nlr_raise(mp_obj_new_exception_args(&mp_type_gaierror, MP_ARRAY_SIZE(exc_args), exc_args));
+}
+
+MP_WEAK MP_NORETURN
+void common_hal_socketpool_socketpool_raise_gaierror_noname(void) {
+    common_hal_socketpool_socketpool_raise_gaierror(SOCKETPOOL_EAI_NONAME);
 }
