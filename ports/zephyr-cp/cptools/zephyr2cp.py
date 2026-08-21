@@ -517,19 +517,23 @@ def zephyr_dts_to_cp_board(board_id, portdir, builddir, zephyrbuilddir, mpconfig
 
     config_bt_enabled = False
     config_bt_found = False
+    config_soc = None
     config_present = True
     config = zephyrbuilddir / ".config"
     if not config.exists():
         config_present = False
     else:
         for line in config.read_text().splitlines():
-            if line.startswith("CONFIG_BT="):
-                config_bt_enabled = line.strip().endswith("=y")
-                config_bt_found = True
-                break
-            if line.startswith("# CONFIG_BT is not set"):
-                config_bt_enabled = False
-                config_bt_found = True
+            if line.startswith("CONFIG_SOC="):
+                config_soc = line.split("=", 1)[1].strip().strip('"')
+            elif not config_bt_found:
+                if line.startswith("CONFIG_BT="):
+                    config_bt_enabled = line.strip().endswith("=y")
+                    config_bt_found = True
+                elif line.startswith("# CONFIG_BT is not set"):
+                    config_bt_enabled = False
+                    config_bt_found = True
+            if config_soc is not None and config_bt_found:
                 break
 
     runners = zephyrbuilddir / "runners.yaml"
@@ -553,7 +557,16 @@ def zephyr_dts_to_cp_board(board_id, portdir, builddir, zephyrbuilddir, mpconfig
     else:
         vendor_name = board_info["vendor_id"]
     board_info["vendor"] = vendor_name
-    soc_name = board_yaml["socs"][0]["name"]
+    # One board.yml can list several SoCs: the nRF54L15 DK lists nrf54l05,
+    # nrf54l10 and nrf54l15 because the DK can be built as any of them. Taking
+    # socs[0] unconditionally reported an nRF54L15 DK as "nrf54l05", so prefer
+    # whichever SoC this build actually selected. Falls back to the first entry
+    # when .config is missing or names an SoC the board does not list.
+    soc_names = [soc["name"] for soc in board_yaml["socs"]]
+    if config_soc is not None and config_soc in soc_names:
+        soc_name = config_soc
+    else:
+        soc_name = soc_names[0]
     board_info["soc"] = soc_name
     board_name = board_yaml["full_name"]
     if mpconfigboard and "NAME" in mpconfigboard:

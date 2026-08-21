@@ -21,7 +21,10 @@ float common_hal_mcu_processor_get_temperature(void) {
 
 extern uint32_t SystemCoreClock;
 uint32_t common_hal_mcu_processor_get_frequency(void) {
-    #ifdef __ARM__
+    #if defined(__arm__)
+    // CMSIS SystemCoreClock, set by the SoC system_*.c. Note this is the CPU
+    // clock, which is not CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC: that is the
+    // kernel tick source, and on nRF54L it is the 1 MHz GRTC.
     return SystemCoreClock;
     #else
     return CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC;

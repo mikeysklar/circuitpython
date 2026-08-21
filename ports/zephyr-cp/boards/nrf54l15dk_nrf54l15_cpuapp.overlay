@@ -1,5 +1,15 @@
 // nRF54L15 DK doesn't have USB, so no app.overlay for CDC ACM.
 
+// Link application starting at 0x0 instead of slot0_partition (no mcuboot yet).
+// Without this the image links at 0x10000 and the SoC still boots whatever sits
+// at 0x0, so freshly flashed CircuitPython never runs. Matches what
+// nrf54lm20dk_nrf54lm20a_cpuapp.overlay already does.
+/ {
+	chosen {
+		zephyr,code-partition = &cpuapp_rram;
+	};
+};
+
 // I2C bus on P1.8 (SDA) and P1.10 (SCL).
 &pinctrl {
 	i2c21_default: i2c21_default {
