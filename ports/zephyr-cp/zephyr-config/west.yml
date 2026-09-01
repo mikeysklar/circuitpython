@@ -7,7 +7,12 @@ manifest:
       revision: 41cb69cd08848cc31e91ed62d01d397511981919
       path: modules/bsim_hw_models/nrf_hw_models
     - name: zephyr
-      url: https://github.com/adafruit/zephyr
-      revision: 499310df6e4da5ca54165c4b4c4c714771acb84c
-      clone-depth: 100
+      # DEV OVERRIDE: mikeysklar/zephyr's soc-esp32s31 branch (ESP32-S31
+      # SoC bring-up on top of upstream zephyrproject-rtos/zephyr main,
+      # not yet upstreamed) instead of adafruit/zephyr. That branch's own
+      # west.yml also redirects hal_espressif to a matching fork branch
+      # with the esp32s31 Zephyr integration layer. Revert to
+      # adafruit/zephyr once/if this lands there.
+      url: https://github.com/mikeysklar/zephyr
+      revision: soc-esp32s31
       import: true
