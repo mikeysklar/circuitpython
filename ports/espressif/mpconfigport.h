@@ -29,6 +29,10 @@
 #ifndef CIRCUITPY_BOOT_BUTTON
   #if defined(CONFIG_IDF_TARGET_ESP32C2) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6) || defined(CONFIG_IDF_TARGET_ESP32H2) || defined(CONFIG_IDF_TARGET_ESP32C61)
     #define CIRCUITPY_BOOT_BUTTON (&pin_GPIO9)
+  #elif defined(CONFIG_IDF_TARGET_ESP32C5)
+    // C5 is the odd one out: its ROM download strapping pin is GPIO28, not
+    // GPIO9 or GPIO0. GPIO0 on C5 is XTAL_32K_P and has no boot role.
+    #define CIRCUITPY_BOOT_BUTTON (&pin_GPIO28)
   #elif !defined(CONFIG_IDF_TARGET_ESP32)
     #define CIRCUITPY_BOOT_BUTTON (&pin_GPIO0)
   #endif
