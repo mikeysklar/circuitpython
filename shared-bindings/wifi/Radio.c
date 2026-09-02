@@ -258,6 +258,9 @@ MP_PROPERTY_GETTER(wifi_radio_mac_address_ap_obj,
 //|     ) -> Iterable[Network]:
 //|         """Scans for available wifi networks over the given channel range. Make sure the channels are allowed in your country.
 //|
+//|         On dual-band radios, 5 GHz channels (36 and above) may also be given.
+//|         Channel numbers that the radio does not support are skipped.
+//|
 //|         .. note::
 //|
 //|             In the raspberrypi port (RP2040 CYW43), ``start_channel`` and ``stop_channel`` are ignored.
@@ -275,10 +278,12 @@ static mp_obj_t wifi_radio_start_scanning_networks(size_t n_args, const mp_obj_t
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
     mp_arg_parse_all(n_args - 1, pos_args + 1, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
 
+    // 165 is the highest 5 GHz channel number. Channels the radio doesn't
+    // support are skipped while scanning rather than rejected here.
     uint8_t start_channel =
-        (uint8_t)mp_arg_validate_int_range(args[ARG_start_channel].u_int, 1, 14, MP_QSTR_start_channel);
+        (uint8_t)mp_arg_validate_int_range(args[ARG_start_channel].u_int, 1, 165, MP_QSTR_start_channel);
     uint8_t stop_channel =
-        (uint8_t)mp_arg_validate_int_range(args[ARG_stop_channel].u_int, 1, 14, MP_QSTR_stop_channel);
+        (uint8_t)mp_arg_validate_int_range(args[ARG_stop_channel].u_int, 1, 165, MP_QSTR_stop_channel);
     // Swap if in reverse order, without complaining.
     if (start_channel > stop_channel) {
         uint8_t temp = stop_channel;

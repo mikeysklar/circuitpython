@@ -18,6 +18,7 @@
 #include "shared-bindings/wifi/ScannedNetworks.h"
 
 #include "components/esp_wifi/include/esp_wifi.h"
+#include "soc/soc_caps.h"
 
 static void wifi_scannednetworks_done(wifi_scannednetworks_obj_t *self) {
     self->done = true;
@@ -111,7 +112,15 @@ mp_obj_t common_hal_wifi_scannednetworks_next(wifi_scannednetworks_obj_t *self) 
 }
 
 // We don't do a linear scan so that we look at a variety of spectrum up front.
+#if defined(SOC_WIFI_SUPPORT_5G) && SOC_WIFI_SUPPORT_5G
+// 2.4 GHz first, then the 5 GHz U-NII bands. Only the non-DFS channels are
+// listed: DFS channels require radar detection before transmitting, and are
+// not scannable without it.
+static uint8_t scan_pattern[] = {6, 1, 11, 3, 9, 13, 2, 4, 8, 12, 5, 7, 10, 14,
+                                 36, 40, 44, 48, 149, 153, 157, 161, 165, 0};
+#else
 static uint8_t scan_pattern[] = {6, 1, 11, 3, 9, 13, 2, 4, 8, 12, 5, 7, 10, 14, 0};
+#endif
 
 void wifi_scannednetworks_scan_next_channel(wifi_scannednetworks_obj_t *self) {
     // There is no channel 0, so use that as a flag to indicate we've run out of channels to scan.
