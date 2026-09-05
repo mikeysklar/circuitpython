@@ -1,0 +1,21 @@
+#
+# Espressif IoT Development Framework Configuration
+#
+#
+# Component config
+#
+#
+# ESP System Settings
+#
+# Native machine code (CIRCUITPY_ENABLE_MPY_NATIVE=1) is copied into RAM and
+# executed from there. The PMS/PMP memory protection marks all RAM
+# non-executable and makes MALLOC_CAP_EXEC allocations fail, so it has to be
+# off for native code to run. This lowers a security boundary: a bug that can
+# write RAM can then also run code from it. Only pulled in by the Makefile
+# when the flag is set.
+# CONFIG_ESP_SYSTEM_MEMPROT is not set
+# end of ESP System Settings
+
+# end of Component config
+
+# end of Espressif IoT Development Framework Configuration
