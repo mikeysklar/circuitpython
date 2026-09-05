@@ -70,8 +70,22 @@ extern void common_hal_mcu_enable_interrupts(void);
 #define MICROPY_COMP_MODULE_CONST        (1)
 #define MICROPY_COMP_TRIPLE_TUPLE_ASSIGN (0)
 #define MICROPY_DEBUG_PRINTERS           (0)
-#define MICROPY_EMIT_INLINE_THUMB        (CIRCUITPY_ENABLE_MPY_NATIVE)
-#define MICROPY_EMIT_THUMB               (CIRCUITPY_ENABLE_MPY_NATIVE)
+// Native/viper emitter and .mpy native loader, selected by the compiler's
+// architecture macros so this header stays port-agnostic. With the flag off
+// the MICROPY_EMIT_* macros keep their py/mpconfig.h defaults of 0.
+#if CIRCUITPY_ENABLE_MPY_NATIVE
+#if defined(__thumb__)
+#define MICROPY_EMIT_INLINE_THUMB        (1)
+#define MICROPY_EMIT_THUMB               (1)
+#elif defined(__XTENSA_WINDOWED_ABI__)
+// ESP32, ESP32-S2, ESP32-S3 (LX6/LX7, windowed ABI). The port must also
+// provide MP_PLAT_COMMIT_EXEC so the code is copied into instruction RAM.
+#define MICROPY_EMIT_XTENSAWIN           (1)
+#elif defined(__riscv) && (__riscv_xlen == 32)
+// ESP32-C3/C6/C5/P4 and other RV32IMC targets.
+#define MICROPY_EMIT_RV32                (1)
+#endif
+#endif
 #define MICROPY_EMIT_X64                 (0)
 #define MICROPY_ENABLE_DOC_STRING        (0)
 #define MICROPY_ENABLE_FINALISER         (1)
