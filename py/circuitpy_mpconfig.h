@@ -212,7 +212,18 @@ extern void common_hal_mcu_enable_interrupts(void);
 
 #define BYTES_PER_WORD (4)
 
+// On ARM the low bit of a code pointer selects the Thumb instruction set, so a
+// callable pointer to emitted machine code must have bit 0 set. Other
+// architectures address instructions normally and setting bit 0 makes the call
+// jump to an odd address and hard-fault; it only ever mattered for native code,
+// which until recently no non-ARM CircuitPython port enabled. Select by the
+// compiler architecture macros so this port-agnostic header stays correct
+// everywhere. Matches upstream, where each native port defines this itself.
+#if defined(__thumb__)
 #define MICROPY_MAKE_POINTER_CALLABLE(p) ((void *)((mp_uint_t)(p) | 1))
+#else
+#define MICROPY_MAKE_POINTER_CALLABLE(p) ((void *)(p))
+#endif
 
 // Track stack usage. Expose results via ustack module.
 #define MICROPY_MAX_STACK_USAGE       (0)
