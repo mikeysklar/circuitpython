@@ -15,6 +15,7 @@
 #include "supervisor/shared/serial.h"
 #include "py/mpprint.h"
 #include "py/runtime.h"
+#include "py/persistentcode.h"
 
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
@@ -86,6 +87,8 @@
 #include "esp_ipc.h"
 #include "esp_rom_efuse.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
+#include "esp_memory_utils.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 #include "hal/efuse_hal.h"
@@ -347,6 +350,62 @@ size_t port_heap_get_largest_free_size(void) {
     return free_size;
 }
 
+#if CIRCUITPY_ENABLE_MPY_NATIVE
+// Native code lives outside the GC heap, in instruction RAM, so it is tracked
+// here and released as a whole when the VM is torn down. Modelled on
+// esp_native_code_commit() in MicroPython's ports/esp32/main.c.
+typedef struct _native_code_node_t {
+    struct _native_code_node_t *next;
+    uint32_t data[];
+} native_code_node_t;
+
+static native_code_node_t *native_code_head = NULL;
+
+static void esp_native_code_free_all(void) {
+    while (native_code_head != NULL) {
+        native_code_node_t *next = native_code_head->next;
+        heap_caps_free(native_code_head);
+        native_code_head = next;
+    }
+}
+
+// Copy `len` bytes of machine code from `buf` into executable memory and return
+// the executable address. If `reloc` is non-NULL the relocations in it are
+// applied against the final address first (see mp_native_relocate()). Raises
+// MemoryError, via m_malloc_fail(), when no executable memory is available;
+// `buf` is left untouched in that case.
+void *esp_native_code_commit(void *buf, size_t len, void *reloc) {
+    len = (len + 3) & ~3;
+    size_t len_node = sizeof(native_code_node_t) + len;
+    native_code_node_t *node = heap_caps_malloc(len_node, MALLOC_CAP_EXEC);
+    #if defined(CONFIG_IDF_TARGET_ESP32S2)
+    // Workaround for https://github.com/espressif/esp-idf/issues/14835: on the
+    // S2 an exec-capable region can be handed out that the CPU cannot fetch from.
+    if (node != NULL && !esp_ptr_executable(node)) {
+        heap_caps_free(node);
+        node = NULL;
+    }
+    #endif
+    if (node == NULL) {
+        m_malloc_fail(len_node);
+    }
+    node->next = native_code_head;
+    native_code_head = node;
+    void *p = node->data;
+    if (reloc) {
+        mp_native_relocate(reloc, buf, (uintptr_t)p);
+    }
+    // Word copy: IRAM on the classic ESP32 is not byte-addressable, and len
+    // has been rounded up to a multiple of 4 above.
+    const uint32_t *src = buf;
+    uint32_t *dst = p;
+    for (size_t i = 0; i < len / 4; i++) {
+        dst[i] = src[i];
+    }
+    return p;
+}
+#endif
+
 void reset_port_early(void) {
     // esp-camera adds an I2C device on the ESP I2C bus, and keeps it there. This
     // is unlike busio.I2C, which adds and removes the device on each operation.
@@ -409,6 +468,12 @@ void reset_port(void) {
 
     #if CIRCUITPY_WATCHDOG
     watchdog_reset();
+    #endif
+
+    #if CIRCUITPY_ENABLE_MPY_NATIVE
+    // Called from cleanup_after_vm() before stop_mp(): no Python code runs
+    // between here and the heap teardown, so the IRAM copies can go.
+    esp_native_code_free_all();
     #endif
 
     // Yield so the idle task, at priority 0, can run and do any IDF cleanup needed.
