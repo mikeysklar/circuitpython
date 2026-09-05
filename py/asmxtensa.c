@@ -34,7 +34,10 @@
 
 #include "py/asmxtensa.h"
 
-#if N_XTENSAWIN
+// CIRCUITPY-CHANGE: -Wundef clean. N_XTENSAWIN is only defined by
+// emitnxtensawin.c, never in this translation unit, so this keeps upstream's
+// behaviour of evaluating to 0 here.
+#if defined(N_XTENSAWIN) && N_XTENSAWIN
 #define REG_TEMP ASM_XTENSA_REG_TEMPORARY_WIN
 #else
 #define REG_TEMP ASM_XTENSA_REG_TEMPORARY
@@ -77,7 +80,8 @@ void asm_xtensa_entry(asm_xtensa_t *as, int num_locals) {
         // jump over the constants
         asm_xtensa_op_j(as, as->num_const * WORD_SIZE + 4 - 4);
         mp_asm_base_get_cur_to_write_bytes(&as->base, 1); // padding/alignment byte
-        as->const_table = (uint32_t *)mp_asm_base_get_cur_to_write_bytes(&as->base, as->num_const * 4);
+        // CIRCUITPY-CHANGE: cast via void * for -Wcast-align; the table is word-aligned by the padding byte above.
+        as->const_table = (uint32_t *)(void *)mp_asm_base_get_cur_to_write_bytes(&as->base, as->num_const * 4);
     }
 
     // adjust the stack-pointer to store a0, a12, a13, a14, a15 and locals, 16-byte aligned
@@ -118,7 +122,8 @@ void asm_xtensa_entry_win(asm_xtensa_t *as, int num_locals) {
     // jump over the constants
     asm_xtensa_op_j(as, as->num_const * WORD_SIZE + 4 - 4);
     mp_asm_base_get_cur_to_write_bytes(&as->base, 1); // padding/alignment byte
-    as->const_table = (uint32_t *)mp_asm_base_get_cur_to_write_bytes(&as->base, as->num_const * 4);
+    // CIRCUITPY-CHANGE: cast via void * for -Wcast-align; the table is word-aligned by the padding byte above.
+    as->const_table = (uint32_t *)(void *)mp_asm_base_get_cur_to_write_bytes(&as->base, as->num_const * 4);
 
     as->stack_adjust = 32 + ((((ASM_XTENSA_NUM_REGS_SAVED_WIN + num_locals) * WORD_SIZE) + 15) & ~15);
     asm_xtensa_op_entry(as, ASM_XTENSA_REG_A1, as->stack_adjust);
@@ -287,7 +292,8 @@ void asm_xtensa_mov_reg_pcrel(asm_xtensa_t *as, uint reg_dest, uint label) {
     asm_xtensa_op_add_n(as, reg_dest, reg_dest, ASM_XTENSA_REG_A0);
 }
 
-void asm_xtensa_l32i_optimised(asm_xtensa_t *as, uint reg_dest, uint reg_base, uint word_offset) {
+// CIRCUITPY-CHANGE: static, only used in this file (-Wmissing-prototypes).
+static void asm_xtensa_l32i_optimised(asm_xtensa_t *as, uint reg_dest, uint reg_base, uint word_offset) {
     if (word_offset < 16) {
         asm_xtensa_op_l32i_n(as, reg_dest, reg_base, word_offset);
     } else if (word_offset < 256) {
