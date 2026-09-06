@@ -535,21 +535,28 @@ typedef uint64_t mp_uint_t;
 // Convenience definition for whether any native emitter is enabled
 #define MICROPY_EMIT_NATIVE (MICROPY_EMIT_X64 || MICROPY_EMIT_X86 || MICROPY_EMIT_THUMB || MICROPY_EMIT_ARM || MICROPY_EMIT_XTENSA || MICROPY_EMIT_XTENSAWIN || MICROPY_EMIT_RV32 || MICROPY_EMIT_NATIVE_DEBUG)
 
-// Some architectures cannot read byte-wise from executable memory.  In this case
-// the prelude for a native function (which usually sits after the machine code)
-// must be separated and placed somewhere where it can be read byte-wise.
-#define MICROPY_EMIT_NATIVE_PRELUDE_SEPARATE_FROM_MACHINE_CODE (MICROPY_EMIT_XTENSAWIN)
-
-// Convenience definition for whether any inline assembler emitter is enabled
-#define MICROPY_EMIT_INLINE_ASM (MICROPY_EMIT_INLINE_THUMB || MICROPY_EMIT_INLINE_XTENSA || MICROPY_EMIT_INLINE_RV32)
-
-// Convenience definition for whether any native or inline assembler emitter is enabled
 // MICROPY_LOAD_NATIVE: load and run host-compiled native .mpy without the
 // on-board emitter. Keeps the native runtime glue (fun table, relocation,
 // call path) while the emitter source files stay out of the build.
 #ifndef MICROPY_LOAD_NATIVE
 #define MICROPY_LOAD_NATIVE (0)
 #endif
+
+// Some architectures cannot read byte-wise from executable memory.  In this case
+// the prelude for a native function (which usually sits after the machine code)
+// must be separated and placed somewhere where it can be read byte-wise.
+// CIRCUITPY-CHANGE: a loader-only build on windowed Xtensa needs this too; the
+// prelude of a loaded native .mpy is read byte-wise from IRAM otherwise.
+#if MICROPY_EMIT_XTENSAWIN || (MICROPY_LOAD_NATIVE && defined(__XTENSA_WINDOWED_ABI__))
+#define MICROPY_EMIT_NATIVE_PRELUDE_SEPARATE_FROM_MACHINE_CODE (1)
+#else
+#define MICROPY_EMIT_NATIVE_PRELUDE_SEPARATE_FROM_MACHINE_CODE (0)
+#endif
+
+// Convenience definition for whether any inline assembler emitter is enabled
+#define MICROPY_EMIT_INLINE_ASM (MICROPY_EMIT_INLINE_THUMB || MICROPY_EMIT_INLINE_XTENSA || MICROPY_EMIT_INLINE_RV32)
+
+// Convenience definition for whether any native or inline assembler emitter is enabled
 #define MICROPY_EMIT_MACHINE_CODE (MICROPY_EMIT_NATIVE || MICROPY_EMIT_INLINE_ASM || MICROPY_LOAD_NATIVE)
 
 /*****************************************************************************/
