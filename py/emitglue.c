@@ -119,7 +119,13 @@ void mp_emit_glue_assign_native(mp_raw_code_t *rc, mp_raw_code_kind_t kind, cons
     // Flush D-cache, so the code emitted is stored in RAM.
     MP_HAL_CLEAN_DCACHE(fun_data, fun_len);
     // Invalidate I-cache, so the newly-created code is reloaded from RAM.
+    // CIRCUITPY-CHANGE: let a port supply the I-cache invalidate (Zephyr does
+    // not expose CMSIS SCB_* cleanly); fall back to CMSIS otherwise.
+    #if defined(MP_HAL_INVALIDATE_ICACHE)
+    MP_HAL_INVALIDATE_ICACHE();
+    #else
     SCB_InvalidateICache();
+    #endif
     #endif
     #elif MICROPY_EMIT_ARM
     #if (defined(__linux__) && defined(__GNUC__)) || __ARM_ARCH == 7
@@ -219,7 +225,7 @@ mp_obj_t mp_make_function_from_proto_fun(mp_proto_fun_t proto_fun, const mp_modu
     // make the function, depending on the raw code kind
     mp_obj_t fun;
     switch (rc->kind) {
-        #if MICROPY_EMIT_NATIVE
+        #if MICROPY_EMIT_NATIVE || MICROPY_LOAD_NATIVE
         case MP_CODE_NATIVE_PY:
             fun = mp_obj_new_fun_native(def_args, rc->fun_data, context, rc->children);
             // Check for a generator function, and if so change the type of the object
