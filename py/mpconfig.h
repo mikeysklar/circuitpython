@@ -544,7 +544,13 @@ typedef uint64_t mp_uint_t;
 #define MICROPY_EMIT_INLINE_ASM (MICROPY_EMIT_INLINE_THUMB || MICROPY_EMIT_INLINE_XTENSA || MICROPY_EMIT_INLINE_RV32)
 
 // Convenience definition for whether any native or inline assembler emitter is enabled
-#define MICROPY_EMIT_MACHINE_CODE (MICROPY_EMIT_NATIVE || MICROPY_EMIT_INLINE_ASM)
+// MICROPY_LOAD_NATIVE: load and run host-compiled native .mpy without the
+// on-board emitter. Keeps the native runtime glue (fun table, relocation,
+// call path) while the emitter source files stay out of the build.
+#ifndef MICROPY_LOAD_NATIVE
+#define MICROPY_LOAD_NATIVE (0)
+#endif
+#define MICROPY_EMIT_MACHINE_CODE (MICROPY_EMIT_NATIVE || MICROPY_EMIT_INLINE_ASM || MICROPY_LOAD_NATIVE)
 
 /*****************************************************************************/
 /* Compiler configuration                                                    */

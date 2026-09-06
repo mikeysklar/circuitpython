@@ -57,7 +57,9 @@
     #define MPY_FEATURE_ARCH (MP_NATIVE_ARCH_X86)
 #elif MICROPY_EMIT_X64
     #define MPY_FEATURE_ARCH (MP_NATIVE_ARCH_X64)
-#elif MICROPY_EMIT_THUMB
+// CIRCUITPY-CHANGE: a loader-only build (MICROPY_LOAD_NATIVE, no emitter)
+// must still advertise and accept the thumb arch it was compiled for.
+#elif MICROPY_EMIT_THUMB || (MICROPY_LOAD_NATIVE && defined(__thumb__))
     #if defined(__thumb2__)
         #if defined(__ARM_FP) && (__ARM_FP & 8) == 8
             #define MPY_FEATURE_ARCH (MP_NATIVE_ARCH_ARMV7EMDP)
