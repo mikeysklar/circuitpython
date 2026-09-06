@@ -28,3 +28,7 @@ ifneq (,$(filter $(TRANSLATION),ja ko ru))
 CIRCUITPY_TERMINALIO = 0
 RELEASE_NEEDS_CLEAN_BUILD = $(CIRCUITPY_DISPLAYIO)
 endif
+
+# Loader-only native: run host-compiled native/viper .mpy without the on-board
+# emitter, so the firmware still fits in flash. See docs/loader-only-samd.md.
+CIRCUITPY_LOAD_NATIVE = 1

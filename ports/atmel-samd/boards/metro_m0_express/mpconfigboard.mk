@@ -14,6 +14,8 @@ CIRCUITPY_CODEOP = 0
 CIRCUITPY_ERRNO = 0
 CIRCUITPY_RAINBOWIO = 0
 
-# Loader-only native (MICROPY_LOAD_NATIVE in mpconfigboard.h) needs ~130 B more
-# than the 256 KB part has; safemode.py is the least-used thing that size.
+# Loader-only native: run host-compiled native/viper .mpy without the on-board
+# emitter. The loader needs ~130 B more than the 256 KB part has, so drop
+# safemode.py, the least-used thing that size. See docs/loader-only-samd.md.
+CIRCUITPY_LOAD_NATIVE = 1
 CIRCUITPY_SAFEMODE_PY = 0
