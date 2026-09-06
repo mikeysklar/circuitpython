@@ -354,7 +354,7 @@ def determine_enabled_modules(board_info, portdir, srcdir):
 async def build_circuitpython():  # noqa: C901
     circuitpython_flags = ["-DCIRCUITPY"]
     port_flags = []
-    enable_mpy_native = False
+    # CIRCUITPY-CHANGE: read from the board circuitpython.toml below.
     full_build = True
     usb_host = False
     zephyr_board = cmake_args["BOARD"]
@@ -367,7 +367,6 @@ async def build_circuitpython():  # noqa: C901
     for module in ALWAYS_ON_MODULES:
         circuitpython_flags.append(f"-DCIRCUITPY_{module.upper()}=1")
     lto = cmake_args.get("LTO", "n") == "y"
-    circuitpython_flags.append(f"-DCIRCUITPY_ENABLE_MPY_NATIVE={1 if enable_mpy_native else 0}")
     circuitpython_flags.append(f"-DCIRCUITPY_FULL_BUILD={1 if full_build else 0}")
     circuitpython_flags.append(f"-DCIRCUITPY_SETTINGS_TOML={1 if full_build else 0}")
     circuitpython_flags.append(f"-DMICROPY_PY_ASYNC_AWAIT={1 if full_build else 0}")
@@ -397,6 +396,7 @@ async def build_circuitpython():  # noqa: C901
     if mpconfigboard_fn is not None and mpconfigboard_fn.exists():
         with mpconfigboard_fn.open("rb") as f:
             mpconfigboard.update(tomllib.load(f))
+
     async with asyncio.TaskGroup() as tg:
         tg.create_task(
             cpbuild.run_command(
@@ -426,6 +426,15 @@ async def build_circuitpython():  # noqa: C901
         )
 
     autogen_board_info_fn = mpconfigboard_fn.parent / "autogen_board_info.toml"
+
+    # CIRCUITPY-CHANGE: find_mpconfigboard misses zephyr board aliases (nordic),
+    # so the toml may not be loaded yet. Load it now that the path is resolved,
+    # then honour CIRCUITPY_ENABLE_MPY_NATIVE = true from the board config.
+    if mpconfigboard_fn is not None and mpconfigboard_fn.exists() and "CIRCUITPY_ENABLE_MPY_NATIVE" not in mpconfigboard:
+        with mpconfigboard_fn.open("rb") as f:
+            mpconfigboard.update(tomllib.load(f))
+    enable_mpy_native = bool(mpconfigboard.get("CIRCUITPY_ENABLE_MPY_NATIVE", False))
+    circuitpython_flags.append(f"-DCIRCUITPY_ENABLE_MPY_NATIVE={1 if enable_mpy_native else 0}")
 
     creator_id = mpconfigboard.get("CIRCUITPY_CREATOR_ID", mpconfigboard.get("USB_VID", 0x1209))
     creation_id = mpconfigboard.get("CIRCUITPY_CREATION_ID", mpconfigboard.get("USB_PID", 0x000C))

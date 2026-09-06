@@ -1,0 +1,15 @@
+// Variant: disable the USBHS device controller so cptools/zephyr2cp.py reports
+// usb_device = false. That makes build_circuitpython.py emit
+// -DCIRCUITPY_USB_DEVICE=0, which switches supervisor/serial.c to the
+// busio.UART path on DT_CHOSEN(zephyr_console) == uart20 == the J-Link VCOM.
+&usbhs {
+	status = "disabled";
+};
+
+&usbhs_bc12 {
+	status = "disabled";
+};
+
+&usbhs_wrapper {
+	status = "disabled";
+};

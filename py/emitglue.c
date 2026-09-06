@@ -119,7 +119,13 @@ void mp_emit_glue_assign_native(mp_raw_code_t *rc, mp_raw_code_kind_t kind, cons
     // Flush D-cache, so the code emitted is stored in RAM.
     MP_HAL_CLEAN_DCACHE(fun_data, fun_len);
     // Invalidate I-cache, so the newly-created code is reloaded from RAM.
+    // CIRCUITPY-CHANGE: let a port supply the I-cache invalidate (Zephyr does
+    // not expose CMSIS SCB_* cleanly); fall back to CMSIS otherwise.
+    #if defined(MP_HAL_INVALIDATE_ICACHE)
+    MP_HAL_INVALIDATE_ICACHE();
+    #else
     SCB_InvalidateICache();
+    #endif
     #endif
     #elif MICROPY_EMIT_ARM
     #if (defined(__linux__) && defined(__GNUC__)) || __ARM_ARCH == 7
