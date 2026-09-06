@@ -12,3 +12,7 @@ CIRCUITPY_ESP_FLASH_SIZE = 16MB
 CIRCUITPY_ESP_PSRAM_MODE = opi
 CIRCUITPY_ESP_PSRAM_FREQ = 80m
 CIRCUITPY_ESP_PSRAM_SIZE = 8MB
+
+# Loader-only native: run host-compiled native/viper .mpy without the on-board
+# emitter. Pulls in sdkconfig-native.defaults (memory protection off).
+CIRCUITPY_LOAD_NATIVE = 1
