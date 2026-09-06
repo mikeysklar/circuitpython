@@ -13,3 +13,7 @@ LONGINT_IMPL = MPZ
 CIRCUITPY_CODEOP = 0
 CIRCUITPY_ERRNO = 0
 CIRCUITPY_RAINBOWIO = 0
+
+# Loader-only native (MICROPY_LOAD_NATIVE in mpconfigboard.h) needs ~130 B more
+# than the 256 KB part has; safemode.py is the least-used thing that size.
+CIRCUITPY_SAFEMODE_PY = 0
