@@ -73,9 +73,9 @@ extern portMUX_TYPE background_task_mutex;
 #define CIRCUITPY_ESP32P4_SWAP_LSFS (0)
 #endif
 
-#if CIRCUITPY_ENABLE_MPY_NATIVE
-// Native machine code (viper/native .mpy files and @micropython.native
-// functions compiled on the board) is assembled in ordinary RAM, which on
+#if CIRCUITPY_ENABLE_MPY_NATIVE || MICROPY_LOAD_NATIVE
+// Native machine code (viper/native .mpy files and, with the emitter built in,
+// @micropython.native functions compiled on the board) is assembled in ordinary RAM, which on
 // these chips is the GC heap and may even be PSRAM. Neither is executable, so
 // the code is committed into an IRAM allocation before it is run. See
 // esp_native_code_commit() in supervisor/port.c. This needs

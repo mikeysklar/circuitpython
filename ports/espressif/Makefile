@@ -847,8 +847,9 @@ ifneq ($(CIRCUITPY_BLEIO_NATIVE),0)
 	BLE_SDKCONFIG := ;esp-idf-config/sdkconfig-ble.defaults
 endif
 
-# Native code runs from RAM, which memory protection forbids.
-ifeq ($(CIRCUITPY_ENABLE_MPY_NATIVE),1)
+# Native code runs from RAM, which memory protection forbids. Both the on-board
+# emitter and the loader-only build need it off.
+ifneq (,$(filter 1,$(CIRCUITPY_ENABLE_MPY_NATIVE) $(CIRCUITPY_LOAD_NATIVE)))
 	NATIVE_SDKCONFIG := ;esp-idf-config/sdkconfig-native.defaults
 endif
 
@@ -865,6 +866,7 @@ $(BUILD)/esp-idf/config/sdkconfig.h: boards/$(BOARD)/sdkconfig boards/$(BOARD)/m
 		CIRCUITPY_DUALBANK=$(CIRCUITPY_DUALBANK) \
 		CIRCUITPY_STORAGE_EXTEND=$(CIRCUITPY_STORAGE_EXTEND) \
 		CIRCUITPY_ENABLE_MPY_NATIVE=$(CIRCUITPY_ENABLE_MPY_NATIVE) \
+		CIRCUITPY_LOAD_NATIVE=$(CIRCUITPY_LOAD_NATIVE) \
 		$@
 
 # build a lib

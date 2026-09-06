@@ -36,11 +36,12 @@ def validate(sdk_config, circuitpy_config):
 
     # Native machine code executes from RAM; the PMS/PMP memory protection
     # forbids that and makes MALLOC_CAP_EXEC allocations fail.
-    if circuitpy_config.get("CIRCUITPY_ENABLE_MPY_NATIVE") and sdk_config.get(
-        "CONFIG_ESP_SYSTEM_MEMPROT"
-    ):
+    if (
+        circuitpy_config.get("CIRCUITPY_ENABLE_MPY_NATIVE")
+        or circuitpy_config.get("CIRCUITPY_LOAD_NATIVE")
+    ) and sdk_config.get("CONFIG_ESP_SYSTEM_MEMPROT"):
         raise SystemExit(
-            "CIRCUITPY_ENABLE_MPY_NATIVE=1 requires CONFIG_ESP_SYSTEM_MEMPROT=n "
+            "CIRCUITPY_ENABLE_MPY_NATIVE=1 / CIRCUITPY_LOAD_NATIVE=1 require CONFIG_ESP_SYSTEM_MEMPROT=n "
             "(see esp-idf-config/sdkconfig-native.defaults)"
         )
 

@@ -350,7 +350,7 @@ size_t port_heap_get_largest_free_size(void) {
     return free_size;
 }
 
-#if CIRCUITPY_ENABLE_MPY_NATIVE
+#if CIRCUITPY_ENABLE_MPY_NATIVE || MICROPY_LOAD_NATIVE
 // Native code lives outside the GC heap, in instruction RAM, so it is tracked
 // here and released as a whole when the VM is torn down. Modelled on
 // esp_native_code_commit() in MicroPython's ports/esp32/main.c.
@@ -470,7 +470,7 @@ void reset_port(void) {
     watchdog_reset();
     #endif
 
-    #if CIRCUITPY_ENABLE_MPY_NATIVE
+    #if CIRCUITPY_ENABLE_MPY_NATIVE || MICROPY_LOAD_NATIVE
     // Called from cleanup_after_vm() before stop_mp(): no Python code runs
     // between here and the heap teardown, so the IRAM copies can go.
     esp_native_code_free_all();
