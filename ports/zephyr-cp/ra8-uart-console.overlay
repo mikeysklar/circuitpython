@@ -1,0 +1,25 @@
+// Variant for EK-RA8D1: disable the USBHS device controller so
+// cptools/zephyr2cp.py reports usb_device = false. That makes
+// build_circuitpython.py emit -DCIRCUITPY_USB_DEVICE=0, which switches
+// supervisor/serial.c to the busio.UART path on
+// DT_CHOSEN(zephyr_console) == uart9 == the J-Link OB VCOM.
+//
+// Needed because the stock 10.3.0 image never drains the USB CDC console RX
+// ring buffer on this board: bytes arrive (the write pointer advances, the
+// count grows) and the read pointer never moves, so the REPL cannot be driven
+// over USB even though the display REPL is running.
+&usbhs {
+	status = "disabled";
+};
+
+&usbhs_phy {
+	status = "disabled";
+};
+
+// zephyr2cp.py keys usb_device off the zephyr_udc0 LABEL (cptools/zephyr2cp.py:650),
+// and that label is on the `udc` child of usbhs, whose own status is unaffected by
+// disabling the parent. Without this, CIRCUITPY_USB_DEVICE stays 1 and supervisor/usb.c
+// fails to link against the now-absent usbd_* symbols.
+&zephyr_udc0 {
+	status = "disabled";
+};
