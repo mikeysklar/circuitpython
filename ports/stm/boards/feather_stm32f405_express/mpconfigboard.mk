@@ -17,3 +17,7 @@ LD_BOOT = boards/STM32F405_boot.ld
 UF2_OFFSET = 0x8010000
 
 CIRCUITPY_RGBMATRIX ?= 1
+
+# Loader-only native: run host-compiled native/viper .mpy without the on-board
+# emitter. See docs/loader-only-samd.md in mikeysklar/turbo.
+CIRCUITPY_LOAD_NATIVE = 1

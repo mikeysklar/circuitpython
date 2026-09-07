@@ -10,3 +10,7 @@ CHIP_FAMILY = rp2
 EXTERNAL_FLASH_DEVICES = "W25Q128JVxQ"
 
 CIRCUITPY_SDIOIO = 1
+
+# Loader-only native: run host-compiled native/viper .mpy without the on-board
+# emitter. See docs/loader-only-samd.md in mikeysklar/turbo.
+CIRCUITPY_LOAD_NATIVE = 1
