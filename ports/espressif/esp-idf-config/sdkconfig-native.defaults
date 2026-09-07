@@ -1,0 +1,18 @@
+#
+# Espressif IoT Development Framework Configuration
+#
+#
+# Component config
+#
+#
+# ESP System Settings
+#
+# Native code executes from RAM; memory protection forbids that.
+# Included by the Makefile only when CIRCUITPY_LOAD_NATIVE or
+# CIRCUITPY_ENABLE_MPY_NATIVE is set.
+# CONFIG_ESP_SYSTEM_MEMPROT is not set
+# end of ESP System Settings
+
+# end of Component config
+
+# end of Espressif IoT Development Framework Configuration
