@@ -543,7 +543,8 @@ typedef uint64_t mp_uint_t;
 // Some architectures cannot read byte-wise from executable memory.  In this case
 // the prelude for a native function (which usually sits after the machine code)
 // must be separated and placed somewhere where it can be read byte-wise.
-#define MICROPY_EMIT_NATIVE_PRELUDE_SEPARATE_FROM_MACHINE_CODE (MICROPY_EMIT_XTENSAWIN)
+// CIRCUITPY-CHANGE: also when only loading native code on windowed Xtensa.
+#define MICROPY_EMIT_NATIVE_PRELUDE_SEPARATE_FROM_MACHINE_CODE (MICROPY_EMIT_XTENSAWIN || (MICROPY_PERSISTENT_CODE_LOAD_NATIVE && defined(__XTENSA_WINDOWED_ABI__)))
 
 // Convenience definition for whether any inline assembler emitter is enabled
 #define MICROPY_EMIT_INLINE_ASM (MICROPY_EMIT_INLINE_THUMB || MICROPY_EMIT_INLINE_XTENSA || MICROPY_EMIT_INLINE_RV32)
