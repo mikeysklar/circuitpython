@@ -74,3 +74,11 @@ extern portMUX_TYPE background_task_mutex;
 #ifndef CIRCUITPY_ESP32P4_SWAP_LSFS
 #define CIRCUITPY_ESP32P4_SWAP_LSFS (0)
 #endif
+
+#if MICROPY_PERSISTENT_CODE_LOAD_NATIVE
+// Native code is relocated in the GC heap, which is not executable here, then
+// copied into an IRAM allocation by esp_native_code_commit() before it runs.
+#include <stddef.h>
+void *esp_native_code_commit(void *buf, size_t len, void *reloc);
+#define MP_PLAT_COMMIT_EXEC(buf, len, reloc) esp_native_code_commit(buf, len, reloc)
+#endif
