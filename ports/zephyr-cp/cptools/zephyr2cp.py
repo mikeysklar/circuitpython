@@ -32,6 +32,10 @@ MANUAL_COMPAT_TO_DRIVER = {
     "nordic_nrf_spim": "spi",
     "nordic_nrf_spi": "spi",
     "nordic_nrf_i2s": "i2s",
+    # Out-of-tree Artery AT32 drivers (zephyr-at32-module), not under zephyr/drivers.
+    "artery_at32_usart": "serial",
+    "artery_at32_i2c": "i2c",
+    "artery_at32_spi": "spi",
 }
 
 # These are controllers, not the flash devices themselves.
