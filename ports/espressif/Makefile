@@ -872,7 +872,13 @@ ifneq ($(CIRCUITPY_BLEIO_NATIVE),0)
 	BLE_SDKCONFIG := ;esp-idf-config/sdkconfig-ble.defaults
 endif
 
-SDKCONFIGS := esp-idf-config/sdkconfig.defaults;$(DEBUG_SDKCONFIG);$(FLASH_SIZE_SDKCONFIG);$(FLASH_MODE_SDKCONFIG);$(FLASH_SPEED_SDKCONFIG);$(PSRAM_SDKCONFIG);$(PSRAM_SIZE_SDKCONFIG);$(PSRAM_MODE_SDKCONFIG);$(PSRAM_SPEED_SDKCONFIG);$(BLE_SDKCONFIG);$(TARGET_SDKCONFIG);boards/$(BOARD)/sdkconfig
+# Native code runs from RAM, which memory protection forbids. Both the on-board
+# emitter and the loader-only build need it off.
+ifneq (,$(filter 1,$(CIRCUITPY_ENABLE_MPY_NATIVE) $(CIRCUITPY_LOAD_NATIVE)))
+	NATIVE_SDKCONFIG := ;esp-idf-config/sdkconfig-native.defaults
+endif
+
+SDKCONFIGS := esp-idf-config/sdkconfig.defaults;$(DEBUG_SDKCONFIG);$(FLASH_SIZE_SDKCONFIG);$(FLASH_MODE_SDKCONFIG);$(FLASH_SPEED_SDKCONFIG);$(PSRAM_SDKCONFIG);$(PSRAM_SIZE_SDKCONFIG);$(PSRAM_MODE_SDKCONFIG);$(PSRAM_SPEED_SDKCONFIG);$(BLE_SDKCONFIG)$(NATIVE_SDKCONFIG);$(TARGET_SDKCONFIG);boards/$(BOARD)/sdkconfig
 
 # create the config headers
 .PHONY: do-sdkconfig
@@ -884,6 +890,8 @@ $(BUILD)/esp-idf/config/sdkconfig.h: boards/$(BOARD)/sdkconfig boards/$(BOARD)/m
 	$(Q)$(PYTHON) tools/check-sdkconfig.py \
 		CIRCUITPY_DUALBANK=$(CIRCUITPY_DUALBANK) \
 		CIRCUITPY_STORAGE_EXTEND=$(CIRCUITPY_STORAGE_EXTEND) \
+		CIRCUITPY_ENABLE_MPY_NATIVE=$(CIRCUITPY_ENABLE_MPY_NATIVE) \
+		CIRCUITPY_LOAD_NATIVE=$(CIRCUITPY_LOAD_NATIVE) \
 		$@
 
 # build a lib
