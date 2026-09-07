@@ -32,6 +32,10 @@ MANUAL_COMPAT_TO_DRIVER = {
     "nordic_nrf_spim": "spi",
     "nordic_nrf_spi": "spi",
     "nordic_nrf_i2s": "i2s",
+    # Out-of-tree Artery AT32 drivers (zephyr-at32-module), not under zephyr/drivers.
+    "artery_at32_usart": "serial",
+    "artery_at32_i2c": "i2c",
+    "artery_at32_spi": "spi",
 }
 
 # These are controllers, not the flash devices themselves.
@@ -650,15 +654,27 @@ def zephyr_dts_to_cp_board(board_id, portdir, builddir, zephyrbuilddir, mpconfig
             elif driver == "usb/udc" or "zephyr_udc0" in node.labels:
                 board_info["usb_device"] = True
                 props = node.props
-                if "num-bidir-endpoints" not in props:
+                endpoint_props = (
+                    "num-bidir-endpoints",
+                    "num-in-endpoints",
+                    "num-out-endpoints",
+                    "num-in-eps",
+                    "num-out-eps",
+                )
+                if not any(p in props for p in endpoint_props):
                     props = node.parent.props
                 usb_num_endpoint_pairs = 0
                 if "num-bidir-endpoints" in props:
                     usb_num_endpoint_pairs = props["num-bidir-endpoints"].to_num()
                 single_direction_endpoints = []
                 for d in ("in", "out"):
-                    eps = f"num-{d}-endpoints"
-                    single_direction_endpoints.append(props[eps].to_num() if eps in props else 0)
+                    # snps,dwc2 (and vendor bindings built on it) name these num-in-eps/num-out-eps.
+                    count = 0
+                    for eps in (f"num-{d}-endpoints", f"num-{d}-eps"):
+                        if eps in props:
+                            count = props[eps].to_num()
+                            break
+                    single_direction_endpoints.append(count)
                 # Count separate in/out pairs as bidirectional.
                 usb_num_endpoint_pairs += min(single_direction_endpoints)
             elif driver.startswith("wifi"):

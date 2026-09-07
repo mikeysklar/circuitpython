@@ -1,0 +1,45 @@
+/*
+ * AT32F435ZMT7: 4032 KB internal flash, 4 KB pages.
+ * The fork's partition table overlapped slot0/slot1; replace it with
+ * code + storage (settings/NVS) + nvm + CIRCUITPY.
+ */
+&flash0 {
+	/delete-node/ partitions;
+
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		code_partition: partition@0 {
+			label = "code";
+			reg = <0x00000000 DT_SIZE_K(1536)>;
+			read-only;
+		};
+
+		storage_partition: partition@180000 {
+			label = "storage";
+			reg = <0x00180000 DT_SIZE_K(32)>;
+		};
+
+		nvm_partition: partition@188000 {
+			label = "nvm";
+			reg = <0x00188000 DT_SIZE_K(4)>;
+		};
+
+		circuitpy_partition: partition@189000 {
+			label = "circuitpy";
+			reg = <0x00189000 (DT_SIZE_K(4032) - 0x189000)>;
+		};
+	};
+};
+
+/ {
+	chosen {
+		zephyr,code-partition = &code_partition;
+	};
+};
+
+/* USB device on OTG1 (PA11/PA12, CN2); zephyr_udc0 is set by the board dts. */
+
+#include "../../../app.overlay"

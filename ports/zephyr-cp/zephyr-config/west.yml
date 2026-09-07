@@ -7,7 +7,15 @@ manifest:
       revision: 41cb69cd08848cc31e91ed62d01d397511981919
       path: modules/bsim_hw_models/nrf_hw_models
     - name: zephyr
-      url: https://github.com/adafruit/zephyr
-      revision: 52dc937c7cda06a1c18ff6adec281bbeb096b3d4
+      url: https://github.com/mikeysklar/zephyr
+      revision: 523dffb9d604632bd94e6d837e4ec271771dea11
       clone-depth: 100
       import: true
+    - name: zephyr-at32-module
+      url: https://github.com/mikeysklar/zephyr-at32-module
+      revision: bca8d530d689b7d848ac1e5396ce9bec3d8595c4
+      path: modules/zephyr-at32-module
+    - name: hal_at32
+      url: https://github.com/ArteryTek/hal_at32
+      revision: c6b6c1dad423e9e8ad0d20e4dd7afc2bb5516638
+      path: modules/hal/at32
