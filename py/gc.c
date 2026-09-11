@@ -547,11 +547,11 @@ static mp_state_mem_area_t *gc_get_ptr_area(const void *ptr);
 // data which isn't a pointer to the heap. Equivalent of VERIFY_PTR for the non-split-heap case.
 static inline MP_ALWAYSINLINE mp_state_mem_area_t *gc_verify_ptr_get_area(const void *ptr) {
     // These inline checks are similar to VERIFY_PTR macro, below
-    if ((byte *)ptr < MP_STATE_MEM(area_pool_min) || (byte *)ptr > MP_STATE_MEM(area_pool_max)) {
-        return NULL;  // not in the overall pool region
-    }
     if (((uintptr_t)(ptr) & (BYTES_PER_BLOCK - 1)) != 0) {
         return NULL;  // not aligned on a block boundary
+    }
+    if ((byte *)ptr < MP_STATE_MEM(area_pool_min) || (byte *)ptr > MP_STATE_MEM(area_pool_max)) {
+        return NULL;  // not in the overall pool region
     }
     return gc_get_ptr_area(ptr);
 }
