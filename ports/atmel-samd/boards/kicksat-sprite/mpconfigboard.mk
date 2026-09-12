@@ -38,3 +38,4 @@ CIRCUITPY_ULAB = 0
 
 # Override optimization to keep binary small
 OPTIMIZATION_FLAGS = -Os
+CIRCUITPY_LOAD_NATIVE = 0
