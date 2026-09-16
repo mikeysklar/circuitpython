@@ -224,10 +224,15 @@ extern "C" {
 
 #endif
 
-// Hack to work with older nrfx than what TinyUSB is designed for.
-#define nrf52_errata_187 errata_187
-#define nrf52_errata_171 errata_171
-#define nrf52_errata_166 errata_166
+// TinyUSB calls the nrfx 3.x errata helper names. CircuitPython pins an nrfx 2.x-era
+// fork, so map them onto the nrfx driver-layer helpers, which 3.x did not move.
+#if defined(CFG_TUSB_MCU) && defined(OPT_MCU_NRF5X) && CFG_TUSB_MCU == OPT_MCU_NRF5X
+#include "nrfx_usbd_errata.h"
+#define nrf52_errata_166 nrfx_usbd_errata_166
+#define nrf52_errata_171 nrfx_usbd_errata_171
+#define nrf52_errata_187 nrfx_usbd_errata_187
+#define nrf52_errata_199 nrfx_usbd_errata_199
+#endif
 
 #ifdef __cplusplus
 }
