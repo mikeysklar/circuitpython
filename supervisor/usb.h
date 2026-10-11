@@ -83,3 +83,9 @@ void usb_keyboard_detach(uint8_t dev_addr, uint8_t interface);
 void usb_keyboard_attach(uint8_t dev_addr, uint8_t interface);
 void usb_keymap_set(const uint8_t *buf, size_t len);
 #endif
+
+#if CIRCUITPY_USB_HOST_MIDI
+// Returns a counter that changes every time a USB host MIDI device mounts or
+// unmounts. Never fails. Callable before the VM starts.
+uint32_t usb_host_midi_generation(void);
+#endif

@@ -217,6 +217,13 @@ ifeq ($(CIRCUITPY_TINYUSB),1)
 
   endif
 
+  ifeq ($(CIRCUITPY_USB_HOST_MIDI), 1)
+    SRC_SUPERVISOR += \
+      lib/tinyusb/src/class/midi/midi_host.c \
+      supervisor/shared/usb/host_midi.c \
+
+  endif
+
   ifeq ($(CIRCUITPY_MAX3421E), 1)
     SRC_SUPERVISOR += \
       lib/tinyusb/src/portable/analog/max3421/hcd_max3421.c \

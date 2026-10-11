@@ -206,6 +206,12 @@ extern "C" {
 #define CFG_TUH_HID                 0
 #endif
 
+#if CIRCUITPY_USB_HOST_MIDI
+// Driver keeps an IN transfer queued so keyboards don't drop data between reads.
+#define CFG_TUH_MIDI                1
+#define CFG_TUH_MIDI_RX_BUFSIZE     256
+#endif
+
 // 2 hubs so we can support "7 port" hubs which have two internal hubs.
 #define CFG_TUH_HUB                 2
 #define CFG_TUH_CDC                 0
