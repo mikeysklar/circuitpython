@@ -10,6 +10,7 @@
 #include "extmod/vfs.h"
 #include "py/mperrno.h"
 #include "py/runtime.h"
+#include "py/mpprint.h"
 
 #include "shared-bindings/microcontroller/__init__.h"
 #include "shared-bindings/util.h"
@@ -155,7 +156,7 @@ void common_hal_sdioio_sdcard_construct(sdioio_sdcard_obj_t *self,
     #else
     __HAL_RCC_SDIO_CLK_ENABLE();
 
-    self->handle.Init.ClockDiv = SDIO_TRANSFER_CLK_DIV;
+    self->handle.Init.ClockDiv = 2;  // SDDBG: 48 MHz / (2 + 2) = 12 MHz
     self->handle.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
     self->handle.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
     self->handle.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
@@ -227,10 +228,15 @@ static void wait_write_complete(sdioio_sdcard_obj_t *self) {
         // This waits up to 60s for programming to complete.  This seems like
         // an extremely long time, but this is the timeout that micropython's
         // implementation uses
-        for (int i = 0; i < 60000 && st == HAL_SD_CARD_PROGRAMMING; i++) {
+        int i;
+        for (i = 0; i < 60000 && st == HAL_SD_CARD_PROGRAMMING; i++) {
             st = HAL_SD_GetCardState(&self->handle);
             HAL_Delay(1);
         };
+        if (st != HAL_SD_CARD_TRANSFER || i > 50) {
+            mp_printf(&mp_plat_print, "SDDBG wait: state %d after %d polls err 0x%08lx\n",
+                (int)st, i, (unsigned long)self->handle.ErrorCode);
+        }
         self->state_programming = false;
     }
 }
@@ -257,6 +263,10 @@ mp_negative_errno_t sdioio_sdcard_writeblocks(mp_obj_t self_in, uint8_t *buf,
     HAL_StatusTypeDef r = HAL_SD_WriteBlocks(&self->handle, buf, start_block, num_blocks, time_out);
     common_hal_mcu_enable_interrupts();
     if (r != HAL_OK) {
+        mp_printf(&mp_plat_print, "SDDBG write fail: r %d err 0x%08lx hsd_state %d card %d blk %lu n %lu buf %p\n",
+            (int)r, (unsigned long)self->handle.ErrorCode, (int)self->handle.State,
+            (int)HAL_SD_GetCardState(&self->handle), (unsigned long)start_block,
+            (unsigned long)num_blocks, buf);
         return -MP_EIO;
     }
     return 0;
@@ -286,6 +296,10 @@ mp_negative_errno_t sdioio_sdcard_readblocks(mp_obj_t self_in, uint8_t *buf,
     HAL_StatusTypeDef r = HAL_SD_ReadBlocks(&self->handle, buf, start_block, num_blocks, time_out);
     common_hal_mcu_enable_interrupts();
     if (r != HAL_OK) {
+        mp_printf(&mp_plat_print, "SDDBG read fail: r %d err 0x%08lx hsd_state %d card %d blk %lu n %lu\n",
+            (int)r, (unsigned long)self->handle.ErrorCode, (int)self->handle.State,
+            (int)HAL_SD_GetCardState(&self->handle), (unsigned long)start_block,
+            (unsigned long)num_blocks);
         return -MP_EIO;
     }
     return 0;
