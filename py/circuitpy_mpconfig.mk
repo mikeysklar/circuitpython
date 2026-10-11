@@ -643,17 +643,6 @@ CFLAGS += -DCIRCUITPY_UHEAP=$(CIRCUITPY_UHEAP)
 CIRCUITPY_USB_DEVICE ?= 1
 CFLAGS += -DCIRCUITPY_USB_DEVICE=$(CIRCUITPY_USB_DEVICE)
 
-# usb_audio needs the TinyUSB device stack and audiocore. A port may default it
-# on, so clear it for boards that turn either dependency off. This has to happen
-# before the CIRCUITPY_USB_DEVICE block below, which is skipped entirely on a
-# board without native USB and so would leave a port default of 1 standing.
-ifeq ($(CIRCUITPY_USB_DEVICE),0)
-CIRCUITPY_USB_AUDIO = 0
-endif
-ifeq ($(CIRCUITPY_AUDIOCORE),0)
-CIRCUITPY_USB_AUDIO = 0
-endif
-
 ifneq ($(CIRCUITPY_USB_DEVICE),0)
 ifndef USB_NUM_ENDPOINT_PAIRS
 $(error "USB_NUM_ENDPOINT_PAIRS (number of USB endpoint pairs)must be defined")
