@@ -1,0 +1,13 @@
+10.4.0-alpha.2-3-g81c191a325 on 2026-09-16
+EXC  calcsize <d ValueError('bad typecode',)
+EXC  calcsize @d ValueError('bad typecode',)
+EXC  pack <d ValueError('bad typecode',)
+EXC  unpack <d ValueError('bad typecode',)
+EXC  unpack @d ValueError('bad typecode',)
+EXC  array d ValueError('bad typecode',)
+EXC  array d rw ValueError('bad typecode',)
+OK   array f rw 3.5
+OK   memoryview d 'no cast'
+OK   pack <f b'\x00\x00\xc0?'
+OK   unpack <f (1.5,)
+OK   array f array('f', [1.5, -2.25])

@@ -1,0 +1,13 @@
+10.4.0-alpha.2-2-gf53f5ab0d6 on 2026-09-16
+OK   calcsize <d 8
+OK   calcsize @d 8
+EXC  pack <d TypeError("can't convert to int",)
+OK   unpack <d (1.5,)
+OK   unpack @d (1.5,)
+OK   array d array('d', [1.5, -2.25])
+OK   array d rw 3.5
+OK   array f rw 3.5
+OK   memoryview d 'no cast'
+OK   pack <f b'\x00\x00\xc0?'
+OK   unpack <f (1.5,)
+OK   array f array('f', [1.5, -2.25])
