@@ -26,6 +26,7 @@ MINIMUM_RAM_SIZE = 8192
 MANUAL_COMPAT_TO_DRIVER = {
     "renesas_ra_nv_flash": "flash",
     "soc_nv_flash": "flash",
+    "jedec_nor": "flash",
     "nordic_nrf_uarte": "serial",
     "nordic_nrf_uart": "serial",
     "nordic_nrf_twim": "i2c",
