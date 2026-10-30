@@ -9,16 +9,16 @@ manifest:
       revision: 41cb69cd08848cc31e91ed62d01d397511981919
       path: modules/bsim_hw_models/nrf_hw_models
     - name: mcuboot
-      url: https://github.com/adafruit/adaboot
-      revision: ba4851fb048c4593d886ffa7936fb708fbf4cb38
+      url: https://github.com/mikeysklar/adaboot
+      revision: 1f1ed40b762eb4db6b6acc27f16713c31df86021
       path: bootloader/mcuboot
     - name: zephyr
-      url: https://github.com/adafruit/zephyr
-      revision: 3567aee7fc2caa322fd534fbf4ed0c705d6c5a62
+      url: https://github.com/mikeysklar/zephyr
+      revision: 84ffaf4898ed84503a9ab1834786ec06f51f4cbf
       clone-depth: 100
       import:
-        # Skip what no CircuitPython board can use, so west update fetches 37
-        # projects instead of 80. Boards come from adafruit, nordic, nxp,
+        # Skip what no CircuitPython board can use, so west update fetches 38
+        # projects instead of 82. Boards come from adafruit, nordic, nxp,
         # raspberrypi, renesas, silabs and st; the Pico W's CYW43 is in hal_infineon.
         name-blocklist:
           # HALs of vendors without a board here
@@ -61,3 +61,4 @@ manifest:
           - percepio
           - uoscore-uedhoc
           - zephyr-xenlib
+          - reqmgmt
